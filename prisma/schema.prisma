@@ -23,4 +23,185 @@ model User {
     password String
     role String?
     status String @default("use")
+    MapSectionGroupUser MapSectionGroupUser[]
+    TransactionStore TransactionStore[]
+    TransactionStoreHistory TransactionStoreHistory[]
 }
+
+
+
+model Group{
+    id Int @id() @default(autoincrement())
+    name String
+    status String @default("use")
+    MapSectionGroupUser MapSectionGroupUser[]
+}
+
+
+model Section{
+  id Int @id() @default(autoincrement())
+  name String
+  status String @default("use")
+  MapSectionGroupUser MapSectionGroupUser[]
+}
+
+
+model MapSectionGroupUser{
+  id Int @id() @default(autoincrement())
+  userId Int 
+  groupId Int
+  sectionId Int
+  status String @default("use")
+  Section Section @relation(fields: [sectionId], references: [id])
+  Group Group @relation(fields: [groupId], references: [id])
+  User User @relation(fields: [userId], references: [id])
+}
+
+
+
+model Area{
+  id Int @id() @default(autoincrement())
+  name String
+  status String @default("use")
+  MapLineArea MapLineArea[]
+  TimeStateIncoming TimeStateIncoming[]
+}
+
+
+model Line{
+  id Int @id() @default(autoincrement())
+  name String 
+  status String @default("use")
+  MapLineArea MapLineArea[]
+}
+
+
+model MapLineArea{
+  id Int @id() @default(autoincrement())
+  areaId Int
+  lineId Int 
+  status String @default("use")
+  Line Line @relation(fields: [lineId], references: [id])
+  Area Area @relation(fields: [areaId], references: [id])
+}
+
+
+
+model Store{
+  id Int @id() @default(autoincrement())
+  name String
+  status String @default("use")
+  TransactionStore TransactionStore[]
+  TransactionStoreHistory TransactionStoreHistory[]
+}
+
+
+model Incoming{
+  id Int @id() @default(autoincrement())
+  jobNo String
+  yearMonth String
+  recivedDate String
+  inspector String
+  unloadBy String
+  invoiceOne String
+  taxLnvNo String
+  materialNo String
+  unitPrice String
+  qtyOfPalletPack String
+  coil Int
+  qtyKgsPcs Int
+  unit String
+  kgsCoil String
+  odCoil String
+  remark String
+  millSheet String
+  itemName String
+  itemSpec String
+  lotNo String
+  packing String
+  rosh String
+  result String
+  supplier String
+  amount String
+  status String @default("use")
+  TimeStateIncoming TimeStateIncoming[]
+  TransactionStore TransactionStore[]
+  TransactionStoreHistory TransactionStoreHistory[]
+}
+
+
+
+model TimeStateIncoming {
+  id Int @id() @default(autoincrement())
+  incomingId Int
+  areaId Int 
+  state String
+  timeStmp DateTime @default(now())
+  status String @default("use")
+  Incoming Incoming @relation(fields: [incomingId], references: [id])
+  Area Area @relation(fields: [areaId], references: [id])
+}
+
+
+model TransactionStore {
+  id Int @id() @default(autoincrement())
+  storeId Int
+  incomingId Int
+  timeStmp DateTime @default(now())
+  userId Int
+  stockNote String?
+  status String @default("use")
+  Store Store @relation(fields: [storeId], references: [id])
+  Incoming Incoming @relation(fields: [incomingId], references: [id])
+  User User @relation(fields: [userId], references: [id])
+}
+
+
+
+model TransactionStoreHistory {
+  id Int @id() @default(autoincrement())
+  storeId Int
+  incomingId Int
+  timeStmp DateTime @default(now())
+  userId Int
+  stockNote String?
+  status String @default("use")
+  Store Store @relation(fields: [storeId], references: [id])
+  Incoming Incoming @relation(fields: [incomingId], references: [id])
+  User User @relation(fields: [userId], references: [id])
+}
+
+
+
+model Material {
+  id Int @id() @default(autoincrement())
+  materialNo String
+  materialName String
+  materialSpec String
+  timeStamp DateTime @default(now())
+  status String @default("use")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

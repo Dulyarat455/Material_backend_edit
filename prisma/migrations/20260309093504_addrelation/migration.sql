@@ -1,0 +1,22 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[MapLineArea] ADD CONSTRAINT [MapLineArea_lineId_fkey] FOREIGN KEY ([lineId]) REFERENCES [dbo].[Line]([id]) ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[MapLineArea] ADD CONSTRAINT [MapLineArea_areaId_fkey] FOREIGN KEY ([areaId]) REFERENCES [dbo].[Area]([id]) ON DELETE NO ACTION ON UPDATE CASCADE;
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

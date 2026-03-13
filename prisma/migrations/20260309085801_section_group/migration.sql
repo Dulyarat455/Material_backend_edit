@@ -1,0 +1,30 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateTable
+CREATE TABLE [dbo].[Group] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [name] NVARCHAR(1000) NOT NULL,
+    CONSTRAINT [Group_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- CreateTable
+CREATE TABLE [dbo].[Section] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [name] NVARCHAR(1000) NOT NULL,
+    CONSTRAINT [Section_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

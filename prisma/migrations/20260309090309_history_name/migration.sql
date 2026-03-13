@@ -1,0 +1,22 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[Group] ADD [status] NVARCHAR(1000) NOT NULL CONSTRAINT [Group_status_df] DEFAULT 'use';
+
+-- AlterTable
+ALTER TABLE [dbo].[Section] ADD [status] NVARCHAR(1000) NOT NULL CONSTRAINT [Section_status_df] DEFAULT 'use';
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH
