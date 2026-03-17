@@ -5,37 +5,42 @@ const prisma = new PrismaClient();
 module.exports = {
     add: async (req,res) =>{
         try{
-            const { name } = req.body;
+            const { materialNo, materialName, materialSpec } = req.body;
          
-            if (!name) {
+            if (materialNo == null, materialName == null , materialSpec == null) {
               return res.status(400).send({ message: 'missing_required_fields' });
             }
 
-            const checkStore = await prisma.store.findFirst({
+            const checkMaterial = await prisma.material.findFirst({
                 where: {
-                  name: name,
+                  materialNo: materialNo ,
+                  materialName: materialName,
+                  materialSpec: materialSpec,
                   status: 'use',
                 },
               });
 
-              if (checkStore) {
-                return res.status(400).send({ message: 'store_name_already' });
+              if (checkMaterial) {
+                return res.status(400).send({ message: 'Material_already' });
               }
 
-              const store = await prisma.store.create({
+              const material = await prisma.material.create({
                 data: {
-                  name: name
+                  materialNo: materialNo,
+                  materialName: materialName,
+                  materialSpec: materialSpec 
                 },
                 select: {
                   id: true,
-                  name: true,
-                  status: true,
+                  materialNo: true,
+                  materialName: true,
+                  materialSpec: true,
                 },
               });
 
             return res.send({
-                message: 'add_storeName_success',
-                data: store,
+                message: 'add_material_success',
+                data: material,
             });
         }catch(e){
             return res.status(500).send({ error: e.message });
@@ -43,7 +48,32 @@ module.exports = {
 
     },
 
+    filterByMaterialNo : async (req,res) => {
+      try{
+         const { materialNo } = req.body ;
 
+        if( materialNo == null){
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+
+        const getNameSpecMaterial = await prisma.material.findFirst({
+          where: {
+            materialNo: materialNo ,
+            status: 'use',
+          },
+        });
+
+        return res.send({ results: getNameSpecMaterial })
+
+      }catch(e){
+        return res.status(500).send({ error: e.message });
+      }
+    },
+
+
+
+    
+    
     importExcel : async (req,res) =>{
         
 

@@ -1,0 +1,26 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateTable
+CREATE TABLE [dbo].[MapStoreLayOut] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [storeId] INT NOT NULL,
+    [zone] NVARCHAR(1000) NOT NULL,
+    [row] NVARCHAR(1000) NOT NULL,
+    [status] NVARCHAR(1000) NOT NULL CONSTRAINT [MapStoreLayOut_status_df] DEFAULT 'use',
+    CONSTRAINT [MapStoreLayOut_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

@@ -59,4 +59,51 @@ module.exports = {
   
     },
 
+
+
+    mapLayOut: async (req, res) => {
+      try{
+        const {storeId, zone, row} = req.body;  
+        
+        if (storeId == null || zone == null || row == null) {
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+
+        const checkMapLayOut = await prisma.mapStoreLayOut.findFirst({
+          where: {
+            storeId: parseInt(storeId),
+            zone: zone,
+            row: row,
+          },
+        });
+
+        if (checkMapLayOut) {
+          return res.status(400).send({ message: 'map_layOut_already' });
+        }
+
+        const mapStoreLayOut = await prisma.mapStoreLayOut.create({
+          data: {
+            storeId: parseInt(storeId),
+            zone: zone,
+            row: row,
+          },
+          select: {
+            id: true,
+            storeId: true,
+            zone: true,
+            row: true
+          },
+        });
+
+      return res.send({
+          message: 'add_storeLayOut_success',
+          data: mapStoreLayOut,
+      });
+
+        
+      }catch(e){
+        return res.status(500).send({ error: e.message });
+      }
+    }
+
 }

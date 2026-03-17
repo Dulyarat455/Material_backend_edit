@@ -93,6 +93,7 @@ model Store{
   status String @default("use")
   TransactionStore TransactionStore[]
   TransactionStoreHistory TransactionStoreHistory[]
+  MapStoreLayOut MapStoreLayOut[]
 }
 
 
@@ -185,7 +186,14 @@ model Material {
 
 
 
-
+model MapStoreLayOut {
+  id Int @id() @default(autoincrement())
+  storeId Int
+  zone String
+  row String
+  status String @default("use")
+  Store Store @relation(fields: [storeId], references: [id]) 
+}
 
 
 
