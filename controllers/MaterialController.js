@@ -72,7 +72,16 @@ module.exports = {
 
 
 
-    
+    list: async (req,res) => {
+      try{
+
+        // chucksize 500 
+      }catch(e){
+        return res.status(500).send({ error: e.message });
+      }
+    },
+
+
     
     importExcel : async (req,res) =>{
         

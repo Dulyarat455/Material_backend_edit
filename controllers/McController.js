@@ -354,19 +354,20 @@ module.exports = {
 
 
 
-
-
+    // =============
+    // delete admin only
+    // =============
     deleteStock :  async (req,res) => {
       try{
         const {incomingId} = req.body;
         
-
 
       }catch(e){
         return res.status(500).send({ error: e.message });
 
       }
     },
+
 
     stockOut : async (req,res) =>{
         try{  

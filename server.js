@@ -12,7 +12,7 @@ const lineController = require('./controllers/LineController');
 const areaController  = require('./controllers/AreaController');
 const mcController = require('./controllers/McController');
 const materialController = require('./controllers/MaterialController');
-
+const issueController = require('./controllers/IssueController');
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -20,7 +20,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 
 //User
 app.post('/api/user/create',(req, res) => userController.create(req,res))
-
+app.post('/api/user/signin',(req, res) => userController.signin(req,res))
 
 //Section
 app.post('/api/section/create',(req, res) => sectionController.add(req,res))
@@ -42,7 +42,8 @@ app.post('/api/line/create',(req, res) => lineController.add(req,res))
 
 //Area
 app.post('/api/area/create',(req, res) => areaController.add(req,res))
-
+app.post('/api/area/mapLineArea',(req, res) => areaController.mapLineArea(req,res))
+app.post('/api/area/filterByLineArea',(req, res)=> areaController.filterbyLineArea(req,res))
 
 
 //Material
@@ -57,6 +58,9 @@ app.get('/api/mc/fetchIncomingAll',(req, res) => mcController.fetchIncomingAll(r
 app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
 
 
+
+//issue
+app.post('/api/issue/create',(req, res) => issueController.createIssue(req,res))
 
 
 
