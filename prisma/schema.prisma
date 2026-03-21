@@ -131,7 +131,6 @@ model Incoming{
   TimeStateIncoming TimeStateIncoming[]
   TransactionStore TransactionStore[]
   TransactionStoreHistory TransactionStoreHistory[]
-  Job Job[]
   StockOut StockOut[]
 }
 
@@ -207,7 +206,7 @@ model MapStoreLayOut {
 model Job {
   id Int @id() @default(autoincrement())
   jobNo String
-  incomingId Int
+  IncomingId Int?
   areaId Int
   requestByUserId Int
   requestTime  DateTime @default(now())
@@ -219,7 +218,6 @@ model Job {
   remark String?
   priority String
   status String @default("use")
-  Incoming Incoming @relation(fields: [incomingId], references: [id])
   Area Area @relation(fields: [areaId], references: [id])
   RequestUser User @relation(fields: [requestByUserId], references: [id])
   Material Material @relation(fields: [materialId], references: [id])

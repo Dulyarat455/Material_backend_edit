@@ -13,6 +13,8 @@ const areaController  = require('./controllers/AreaController');
 const mcController = require('./controllers/McController');
 const materialController = require('./controllers/MaterialController');
 const issueController = require('./controllers/IssueController');
+const returnController = require('./controllers/ReturnController');
+
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -49,7 +51,7 @@ app.post('/api/area/filterByLineArea',(req, res)=> areaController.filterbyLineAr
 //Material
 app.post('/api/material/create',(req, res) => materialController.add(req,res))
 app.get('/api/material/filterByMaterialNo',(req, res) => materialController.filterByMaterialNo(req,res))
-
+app.get('/api/material/list',(req, res) => materialController.list(req,res))
 
 
 //McController
@@ -61,6 +63,15 @@ app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
 
 //issue
 app.post('/api/issue/create',(req, res) => issueController.createIssue(req,res))
+app.post('/api/issue/fetchIssueByUserId',(req, res) => issueController.fetchIssueByUserId(req,res))
+app.get('/api/issue/fetIssueAll',(req, res)=> issueController.fetchIssueAll(req,res))
+
+
+//return
+app.post('/api/return/create',(req, res) => returnController.createReturn(req,res))
+app.post('/api/return/fetchReturnByUserId',(req, res) => returnController.fetchReturnByUserId(req,res))
+app.get('/api/return/fetReturnAll',(req, res)=> returnController.fetchReturnAll(req,res))
+
 
 
 

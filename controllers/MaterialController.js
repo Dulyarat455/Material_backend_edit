@@ -72,13 +72,20 @@ module.exports = {
 
 
 
-    list: async (req,res) => {
+   
+    list: async (req, res) => {
       try{
-
-        // chucksize 500 
+          const rows = await prisma.material.findMany({
+              where: {
+                status: 'use'
+              }
+          })
+          return res.send({ results: rows })
+  
       }catch(e){
-        return res.status(500).send({ error: e.message });
+          return res.status(500).send({ error: e.message });
       }
+  
     },
 
 
