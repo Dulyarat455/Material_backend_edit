@@ -63,28 +63,37 @@ module.exports = {
     signin: async (req, res) => {
       try {
         const { empNo, password } = req.body;
-  
+    
         if (!empNo || !password) {
           return res.status(400).send({ message: 'missing_empNo_or_password' });
         }
-  
-        // ✅ หา user + map + group/section (ใช้ schema ปัจจุบัน: status เท่านั้น)
+    
         const u = await prisma.user.findFirst({
           where: {
             empNo: String(empNo).trim(),
             password: String(password),
             status: 'use',
           },
-         
+          include: {
+            MapSectionGroupUser: {
+              where: {
+                status: 'use',
+              },
+              include: {
+                Group: true,
+                Section: true,
+              },
+              take: 1,
+            },
+          },
         });
-  
+    
         if (!u) {
           return res.status(401).send({ message: 'unauthorized' });
         }
-  
-      
-  
-        // ✅ payload (ไม่มี accountState เพราะ schema ไม่มี)
+    
+        const map = u.MapSectionGroupUser?.[0] || null;
+    
         const payload = {
           id: u.id,
           empNo: u.empNo,
@@ -92,36 +101,83 @@ module.exports = {
           role: u.role,
           rfId: u.rfId,
           status: u.status,
-  
+    
+          groupId: map?.groupId || null,
+          groupName: map?.Group?.name || null,
+          sectionId: map?.sectionId || null,
+          sectionName: map?.Section?.name || null,
         };
-  
+    
         const key = process.env.SECRET_KEY;
         if (!key) {
           return res.status(500).send({ message: 'missing_SECRET_KEY' });
         }
-  
+    
         const token = jwt.sign(
           {
             id: payload.id,
             empNo: payload.empNo,
             role: payload.role,
             name: payload.name,
+            groupId: payload.groupId,
+            groupName: payload.groupName,
+            sectionId: payload.sectionId,
+            sectionName: payload.sectionName,
           },
           key,
           { expiresIn: '30d' }
         );
-  
+    
         return res.send({ token, ...payload });
       } catch (e) {
         console.error(e);
         return res.status(500).send({ error: e.message });
       }
     },
+
+
+    mapSectionGroupUser: async (req,res) =>{
+      try{
+         const {userId, groupId, sectionId} = req.body;
+         
+         if (userId == null || groupId == null || sectionId == null) {
+            return res.status(400).send({ message: 'missing_required_fields' });
+        }      
+
+
+        const checkMapSectionGroupUser  = await prisma.mapSectionGroupUser.findFirst({
+          where: {
+            status: 'use',
+            userId: parseInt(userId) ,
+            groupId: parseInt(groupId),
+            sectionId: parseInt(sectionId)
+          },
+        });
+
+        if (checkMapSectionGroupUser) {
+          return res.status(400).send({ message: 'mapSectionGroupUser_name_already' });
+        }  
+
+
+        const mapSectionGroupUser = await prisma.mapSectionGroupUser.create({
+          data: {
+            userId: parseInt(userId),
+            groupId: parseInt(groupId),
+            sectionId: parseInt(sectionId)
+          },
+        });
+
+      return res.send({
+          message: 'map_sectionGroupUser_success',
+          data: mapSectionGroupUser,
+      });
+
+
+      }catch(e){
+        return res.status(500).send({ error: e.message });
+      }
+    }
     
-
-
-
-
 
 
 }

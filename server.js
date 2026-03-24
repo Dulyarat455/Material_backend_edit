@@ -23,6 +23,8 @@ app.use(bodyParser.urlencoded({ extended: false }));
 //User
 app.post('/api/user/create',(req, res) => userController.create(req,res))
 app.post('/api/user/signin',(req, res) => userController.signin(req,res))
+app.post('/api/user/mapSectionGroupUser',(req, res) => userController.mapSectionGroupUser(req,res))
+
 
 //Section
 app.post('/api/section/create',(req, res) => sectionController.add(req,res))
@@ -65,12 +67,14 @@ app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
 app.post('/api/issue/create',(req, res) => issueController.createIssue(req,res))
 app.post('/api/issue/fetchIssueByUserId',(req, res) => issueController.fetchIssueByUserId(req,res))
 app.get('/api/issue/fetIssueAll',(req, res)=> issueController.fetchIssueAll(req,res))
+app.post('/api/issue/fetchIssueFollowStateJob',(req ,res) => issueController.fetchIssueFollowStateJob(req,res))
 
 
 //return
 app.post('/api/return/create',(req, res) => returnController.createReturn(req,res))
 app.post('/api/return/fetchReturnByUserId',(req, res) => returnController.fetchReturnByUserId(req,res))
-app.get('/api/return/fetReturnAll',(req, res)=> returnController.fetchReturnAll(req,res))
+app.get('/api/return/fetchReturnAll',(req, res)=> returnController.fetchReturnAll(req,res))
+app.post('/api/reurn/fetchReturnFollowStateJob',(req ,res) => returnController.fetchReturnFollowStateJob(req,res))
 
 
 

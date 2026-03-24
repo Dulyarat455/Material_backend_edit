@@ -208,6 +208,7 @@ model Job {
   jobNo String
   IncomingId Int?
   areaId Int
+  groupId Int?
   requestByUserId Int
   requestTime  DateTime @default(now())
   inchargeByUserId Int?
