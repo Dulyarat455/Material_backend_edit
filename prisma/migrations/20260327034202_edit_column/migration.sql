@@ -1,0 +1,23 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[StockOut] ADD [remark] NVARCHAR(1000),
+[timeStmp] DATETIME2 NOT NULL CONSTRAINT [StockOut_timeStmp_df] DEFAULT CURRENT_TIMESTAMP;
+
+-- AlterTable
+ALTER TABLE [dbo].[TransactionStoreHistory] ADD [type] NVARCHAR(1000);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

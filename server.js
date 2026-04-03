@@ -14,6 +14,11 @@ const mcController = require('./controllers/McController');
 const materialController = require('./controllers/MaterialController');
 const issueController = require('./controllers/IssueController');
 const returnController = require('./controllers/ReturnController');
+const stockOutRepport = require('./controllers/StockOutReport');
+const stockLocReport = require('./controllers/StockLocReport');
+const historyReport = require('./controllers/HistoryReport');
+const inventoryReport = require('./controllers/InventoryReport');
+
 
 
 app.use(cors());
@@ -54,12 +59,15 @@ app.post('/api/area/filterByLineArea',(req, res)=> areaController.filterbyLineAr
 app.post('/api/material/create',(req, res) => materialController.add(req,res))
 app.get('/api/material/filterByMaterialNo',(req, res) => materialController.filterByMaterialNo(req,res))
 app.get('/api/material/list',(req, res) => materialController.list(req,res))
+app.get('/api/material/getMaterialByPbass',(req, res) => materialController.getMaterialByPbass(req,res))
 
 
 //McController
 app.post('/api/mc/stockIn',(req, res) => mcController.stockIn(req,res))
 app.get('/api/mc/fetchIncomingAll',(req, res) => mcController.fetchIncomingAll(req,res))
 app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
+app.post('/api/mc/stockOutByProduction',(req, res) => mcController.stockOutByProduction(req,res))
+app.post('/api/mc/stockInByProduction',(req, res) => mcController.stockInByProduction (req,res))
 
 
 
@@ -75,6 +83,42 @@ app.post('/api/return/create',(req, res) => returnController.createReturn(req,re
 app.post('/api/return/fetchReturnByUserId',(req, res) => returnController.fetchReturnByUserId(req,res))
 app.get('/api/return/fetchReturnAll',(req, res)=> returnController.fetchReturnAll(req,res))
 app.post('/api/reurn/fetchReturnFollowStateJob',(req ,res) => returnController.fetchReturnFollowStateJob(req,res))
+
+
+
+
+//StockOutReport
+
+
+
+
+
+
+//StockLocReport
+
+
+
+
+
+
+
+
+//HistoryReport
+
+
+
+
+
+
+
+
+//InventoryReport     
+
+
+
+
+
+
 
 
 

@@ -132,6 +132,7 @@ model Incoming{
   TransactionStore TransactionStore[]
   TransactionStoreHistory TransactionStoreHistory[]
   StockOut StockOut[]
+  IncomingLoc IncomingLoc[]
 }
 
 
@@ -170,6 +171,7 @@ model TransactionStoreHistory {
   timeStmp DateTime @default(now())
   userId Int
   stockNote String?
+  type String?
   status String @default("use")
   Store Store @relation(fields: [storeId], references: [id])
   Incoming Incoming @relation(fields: [incomingId], references: [id])
@@ -222,6 +224,7 @@ model Job {
   Area Area @relation(fields: [areaId], references: [id])
   RequestUser User @relation(fields: [requestByUserId], references: [id])
   Material Material @relation(fields: [materialId], references: [id])
+  IncomingLoc IncomingLoc[]
 }
 
 
@@ -230,12 +233,27 @@ model StockOut {
   incomingId Int
   type String
   inchargeByUserId Int
+  remark String?
+  timeStmp DateTime @default(now())
   status String @default("use")
   Incoming Incoming @relation(fields: [incomingId], references: [id])
   User User @relation(fields: [inchargeByUserId], references: [id])
 }
 
 
+
+
+model IncomingLoc {
+  id Int @id() @default(autoincrement())
+  incomingId Int 
+  coil Int
+  qty Int 
+  jobId Int
+  timeStmp DateTime @default(now())
+  status String @default("use")
+  Incoming Incoming @relation(fields: [incomingId], references: [id])
+  Job Job @relation(fields: [jobId], references: [id])
+}
 
 
 
