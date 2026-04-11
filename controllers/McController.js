@@ -20,14 +20,9 @@ module.exports = {
 
              } = req.body;
          
-            if (jobNo == null || yearMonth == null || recivedDate == null ||
-              inspector == null || unloadBy == null || invoiceOne == null ||
-              taxLnvNo == null || materialNo == null || unitPrice == null ||
-              qtyOfPalletPack == null  || coil == null || qtyKgsPcs == null ||
-              unit == null || kgsCoil == null || odCoil == null || remark == null || 
-              millSheet == null || itemName == null || itemSpec == null || lotNo == null ||
-              packing == null  || rosh == null || result == null || supplier == null ||
-              amount == null || storageArea == null || userId == null 
+            if (!jobNo   ||
+              !materialNo  || !unit   || !itemName 
+              || !itemSpec  || !storageArea || userId == null 
 
             ) {
               return res.status(400).send({ message: 'missing_required_fields' });
@@ -120,7 +115,7 @@ module.exports = {
             });
     
             return res.send({
-                message: 'add_storeName_success',
+                message: 'add_storeIn_success',
                 data: data,
             });
 
@@ -359,34 +354,130 @@ module.exports = {
 
     stockOutByProduction: async (req, res) => {
       try {
-        const { jobId, incomingId, userId, inchargeTime } = req.body;
+        const { jobId, incomingId, userId, inchargeTime, mcRemark, denial } = req.body;
     
+
+        if(denial === false){     
+            if (
+              jobId == null ||
+              incomingId == null ||
+              userId == null ||
+              !inchargeTime 
+              
+            ) {
+              return res.status(400).send({ message: 'missing_required_fields' });
+            }
+        
+            const jobIdInt = parseInt(jobId);
+            const incomingIdInt = parseInt(incomingId);
+            const userIdInt = parseInt(userId);
+            const stockOutDate = new Date(inchargeTime);
+        
+            if (
+              Number.isNaN(jobIdInt) ||
+              Number.isNaN(incomingIdInt) ||
+              Number.isNaN(userIdInt)
+            ) {
+              return res.status(400).send({ message: 'invalid_numeric_fields' });
+            }
+        
+            if (isNaN(stockOutDate.getTime())) {
+              return res.status(400).send({ message: 'invalid_inchargeTime' });
+            }
+        
+            const results = await prisma.$transaction(async (tx) => {
+              const checkJob = await tx.job.findFirst({
+                where: {
+                  id: jobIdInt,
+                  status: 'use',
+                },
+              });
+        
+              if (!checkJob) {
+                throw new Error('this_job_notFound');
+              }
+
+        
+              const checkTransactionStore = await tx.transactionStore.findFirst({
+                where: {
+                  incomingId: incomingIdInt,
+                  status: 'use',
+                },
+              });
+        
+              if (!checkTransactionStore) {
+                throw new Error('transaction_store_notFound');
+              }
+
+              const checkIncoming =  await tx.incoming.findFirst({
+                  where:{
+                      id: incomingIdInt,
+                      status: 'use'
+                  }
+              })       
+
+              if(!checkIncoming){
+                throw new Error('incoming_notFound');
+              }
+        
+              const inventoryUpdate = await tx.job.update({
+                where: {
+                  id: jobIdInt,
+                },
+                data: {
+                  IncomingId: incomingIdInt,
+                  inchargeByUserId: userIdInt,
+                  inchargeTime: stockOutDate,
+                  remarkMC: mcRemark,
+                  state: 'complete',
+                },
+              });
+        
+              const deletedTransactionStore = await tx.transactionStore.update({
+                where: {
+                  id: checkTransactionStore.id,
+                },
+                data: {
+                  status: 'delete'
+                }
+              });
+
+              const addIncomingLoc = await tx.incomingLoc.create({
+                data: {
+                  incomingId: incomingIdInt,
+                  coil: parseInt(checkIncoming.coil),
+                  qty: parseInt(checkIncoming.qtyKgsPcs),
+                  jobId: jobIdInt
+                }
+              })
+        
+              return {
+                inventoryUpdate,
+                deletedTransactionStore,
+                addIncomingLoc
+              };
+            });
+        
+            return res.send({
+              message: 'success',
+              results,
+            });
+      }
+      else if(denial === true){
         if (
           jobId == null ||
-          incomingId == null ||
           userId == null ||
-          inchargeTime == null
+          !inchargeTime 
+          
         ) {
           return res.status(400).send({ message: 'missing_required_fields' });
         }
-    
+
         const jobIdInt = parseInt(jobId);
-        const incomingIdInt = parseInt(incomingId);
         const userIdInt = parseInt(userId);
         const stockOutDate = new Date(inchargeTime);
-    
-        if (
-          Number.isNaN(jobIdInt) ||
-          Number.isNaN(incomingIdInt) ||
-          Number.isNaN(userIdInt)
-        ) {
-          return res.status(400).send({ message: 'invalid_numeric_fields' });
-        }
-    
-        if (isNaN(stockOutDate.getTime())) {
-          return res.status(400).send({ message: 'invalid_inchargeTime' });
-        }
-    
+
+
         const results = await prisma.$transaction(async (tx) => {
           const checkJob = await tx.job.findFirst({
             where: {
@@ -399,78 +490,31 @@ module.exports = {
             throw new Error('this_job_notFound');
           }
 
-    
-          const checkTransactionStore = await tx.transactionStore.findFirst({
-            where: {
-              incomingId: incomingIdInt,
-              status: 'use',
-            },
-          });
-    
-          if (!checkTransactionStore) {
-            throw new Error('transaction_store_notFound');
-          }
-
-          const checkIncoming =  await tx.incoming.findFirst({
-              where:{
-                  id: incomingIdInt,
-                  status: 'use'
-              }
-          })       
-
-          if(!checkIncoming){
-            throw new Error('incoming_notFound');
-          }
-    
           const inventoryUpdate = await tx.job.update({
             where: {
               id: jobIdInt,
             },
             data: {
-              IncomingId: incomingIdInt,
               inchargeByUserId: userIdInt,
               inchargeTime: stockOutDate,
-              state: 'complete',
+              remarkMC: mcRemark,
+              state: 'denial',
             },
           });
-    
-          // const timeStateIncoming = await tx.timeStateIncoming.create({
-          //   data: {
-          //     incomingId: incomingIdInt,
-          //     areaId: parseInt(checkJob.areaId),
-          //     state: 'outSide',
-          //   },
-          // });
-    
-          const deletedTransactionStore = await tx.transactionStore.update({
-            where: {
-              id: checkTransactionStore.id,
-            },
-            data: {
-              status: 'delete'
-            }
-          });
-
-          const addIncomingLoc = await tx.incomingLoc.create({
-            data: {
-              incomingId: incomingIdInt,
-              coil: parseInt(checkIncoming.coil),
-              qty: parseInt(checkIncoming.qtyKgsPcs),
-              jobId: jobIdInt
-            }
-          })
     
           return {
-            inventoryUpdate,
-            deletedTransactionStore,
-            addIncomingLoc
+            inventoryUpdate
           };
-        });
-    
+        })
+
+
         return res.send({
           message: 'success',
           results,
         });
+
+      }
+
       } catch (e) {
         if (
           e.message === 'this_job_notFound' ||
@@ -488,128 +532,186 @@ module.exports = {
 
     stockInByProduction: async (req, res) => {
       try{
-          const {jobNoIncoming, jobId,  storeId,  userId, inchargeTime, stockNote, coil, qty } = req.body;
-
-          if(jobNoIncoming == null || jobId == null || userId == null || inchargeTime == null ){
-            return res.status(400).send({ message: 'missing_required_fields' });
-          }
+          const {jobNoIncoming, jobId,  storeId,  userId, inchargeTime, stockNote, coil, qty, denial, mcRemark } = req.body;
 
 
-          const jobIdInt = parseInt(jobId);
-          const userIdInt = parseInt(userId);
-          const storeIdInt = parseInt(storeId);
-          const stockInDate = new Date(inchargeTime);
-
+          if(denial === false){ 
+            
+            if(jobNoIncoming == null || jobId == null || storeId == null || userId == null || inchargeTime == null ){
+              return res.status(400).send({ message: 'missing_required_fields' });
+            }
+  
+  
+            const jobIdInt = parseInt(jobId);
+            const userIdInt = parseInt(userId);
+            const storeIdInt = parseInt(storeId);
+            const stockInDate = new Date(inchargeTime);
+  
+            
+            const results = await prisma.$transaction(async (tx) => {
+  
+              const getIncoming =  await tx.incoming.findFirst({
+                where:{
+                    jobNo: jobNoIncoming,
+                    status: 'use'
+                  }
+              })       
+  
+              if(!getIncoming){
+                throw new Error('incoming_notFound');
+              }
+  
+              const incomingIdInt = parseInt(getIncoming.id);
+  
+                const checkJob = await tx.job.findFirst({
+                  where: {
+                    id: jobIdInt,
+                    status: 'use',
+                  },
+                });
           
-          const results = await prisma.$transaction(async (tx) => {
-
-            const getIncoming =  await tx.incoming.findFirst({
-              where:{
-                  jobNo: jobNoIncoming,
-                  status: 'use'
+                if (!checkJob) {
+                  throw new Error('this_job_notFound');
                 }
-            })       
+  
+  
+                const checkTransactionStore = await tx.transactionStore.findFirst({
+                  where: {
+                    incomingId: incomingIdInt,
+                    status: 'use',
+                  },
+                });
+          
+                if (checkTransactionStore) {
+                  throw new Error('canNot_returnStockIn_have_material_inStock');
+                }
+      
+                
+  
+  
+                const updateIncoming = await tx.incoming.update({
+                  where:{
+                    id: incomingIdInt,
+                    status: "use"
+                  },
+                  data:{
+                    coil: parseInt(coil)  ,
+                    qtyKgsPcs: parseInt(qty)
+                  }
+                })
+  
+  
+  
+                const addIncomingLoc = await tx.incomingLoc.create({
+                  data: {
+                    incomingId: incomingIdInt,
+                    coil: parseInt(updateIncoming.coil),
+                    qty: parseInt(updateIncoming.qtyKgsPcs),
+                    jobId: jobIdInt
+                  }
+                })
+  
+  
+                const inventoryUpdate = await tx.job.update({
+                  where: {
+                    id: jobIdInt,
+                  },
+                  data: {
+                    IncomingId: incomingIdInt,
+                    inchargeByUserId: userIdInt,
+                    inchargeTime: stockInDate,
+                    remarkMC: mcRemark,
+                    state: 'complete',
+                  },
+                });
+  
+  
+                const addTransactionStore =  await tx.transactionStore.create({
+                  data:{
+                    storeId: storeIdInt,
+                    incomingId: incomingIdInt,
+                    userId: userIdInt,
+                    stockNote: stockNote 
+                  }
+                })
+  
+                const addTransactionStoreHistory = await tx.transactionStoreHistory.create({
+                   data:{
+                    storeId: storeIdInt,
+                    incomingId: incomingIdInt,
+                    userId: userIdInt,
+                    stockNote: stockNote, 
+                    type: "ReturnStockIn"
+                   }
+                })
+  
+                return {
+                  updateIncoming,
+                  addIncomingLoc,
+                  inventoryUpdate,
+                  addTransactionStore,
+                  addTransactionStoreHistory
+                };
+            })
+  
+            return res.send({
+              message: 'success',
+              results,
+            });
 
-            if(!getIncoming){
-              throw new Error('incoming_notFound');
+
+          }
+          else if(denial === true){
+            if(jobId == null || userId == null || !inchargeTime){
+              return res.status(400).send({ message: 'missing_required_fields' });
             }
 
-            const incomingIdInt = parseInt(getIncoming.id);
-
-              const checkJob = await tx.job.findFirst({
-                where: {
-                  id: jobIdInt,
-                  status: 'use',
-                },
-              });
-        
-              if (!checkJob) {
-                throw new Error('this_job_notFound');
-              }
+            
+            const jobIdInt = parseInt(jobId);
+            const userIdInt = parseInt(userId);
+            const stockInDate = new Date(inchargeTime);
 
 
-              const checkTransactionStore = await tx.transactionStore.findFirst({
-                where: {
-                  incomingId: incomingIdInt,
-                  status: 'use',
-                },
-              });
-        
-              if (checkTransactionStore) {
-                throw new Error('canNot_returnStockIn_have_material_inStock');
-              }
-    
-              
+            const results = await prisma.$transaction(async (tx) => {
 
-
-              const updateIncoming = await tx.incoming.update({
-                where:{
-                  id: incomingIdInt,
-                  status: "use"
-                },
-                data:{
-                  coil: parseInt(coil)  ,
-                  qtyKgsPcs: parseInt(qty)
+                const checkJob = await tx.job.findFirst({
+                  where: {
+                    id: jobIdInt,
+                    status: 'use',
+                  },
+                });
+          
+                if (!checkJob) {
+                  throw new Error('this_job_notFound');
                 }
-              })
 
 
 
-              const addIncomingLoc = await tx.incomingLoc.create({
-                data: {
-                  incomingId: incomingIdInt,
-                  coil: parseInt(updateIncoming.coil),
-                  qty: parseInt(updateIncoming.qtyKgsPcs),
-                  jobId: jobIdInt
-                }
-              })
+                const inventoryUpdate = await tx.job.update({
+                  where: {
+                    id: jobIdInt,
+                  },
+                  data: {
+                    inchargeByUserId: userIdInt,
+                    inchargeTime: stockInDate,
+                    remarkMC: mcRemark,
+                    state: 'denial',
+                  },
+                });
 
+                return {
+                  inventoryUpdate
+                };
 
-              const inventoryUpdate = await tx.job.update({
-                where: {
-                  id: jobIdInt,
-                },
-                data: {
-                  IncomingId: incomingIdInt,
-                  inchargeByUserId: userIdInt,
-                  inchargeTime: stockInDate,
-                  state: 'complete',
-                },
-              });
+            })
 
+            return res.send({
+              message: 'success',
+              results,
+            });
 
-              const addTransactionStore =  await tx.transactionStore.create({
-                data:{
-                  storeId: storeIdInt,
-                  incomingId: incomingIdInt,
-                  userId: userIdInt,
-                  stockNote: stockNote 
-                }
-              })
+          }
 
-              const addTransactionStoreHistory = await tx.transactionStoreHistory.create({
-                 data:{
-                  storeId: storeIdInt,
-                  incomingId: incomingIdInt,
-                  userId: userIdInt,
-                  stockNote: stockNote, 
-                  type: "ReturnStockIn"
-                 }
-              })
-
-              return {
-                updateIncoming,
-                addIncomingLoc,
-                inventoryUpdate,
-                addTransactionStore,
-                addTransactionStoreHistory
-              };
-          })
-
-          return res.send({
-            message: 'success',
-            results,
-          });
       }catch(e){
         if (
           e.message === 'this_job_notFound' ||
@@ -623,6 +725,49 @@ module.exports = {
     },
     
     
+
+    outStock : async(req,res)=>{
+      try{
+        const {incomingId, type, inchargeByUserId, remark } = req.body;
+        
+        if(incomingId == null || !type || inchargeByUserId == null  ){
+            return res.status(400).send({ message: 'missing_required_fields' });
+          }
+
+
+
+
+          const stockOut = await prisma.stockOut.create({
+            data: {
+              incomingId: parseInt(incomingId),
+              type:"QC",
+              inchargeByUserId: parseInt(inchargeByUserId),
+              remark: remark || ""
+            },
+            select: {
+              id: true,
+              incomingId: true,
+              type: true,
+              inchargeByUserId: true,
+              remark: true
+            },
+          });
+
+        return res.send({
+            message: 'out_stock_success',
+            data: stockOut,
+        });
+
+
+
+
+
+      }catch(e){
+        return res.status(500).send({ error: e.message });
+      }
+    },
+
+
 
 
 

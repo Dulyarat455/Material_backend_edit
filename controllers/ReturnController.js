@@ -55,6 +55,22 @@ module.exports = {
             const seqStr = String(nextSeq).padStart(3, '0');
             return `${prefix}${seqStr}`;
           };
+
+
+
+          const getMaterial = await prisma.material.findFirst({
+            where: {
+              id: materialId,
+              status: 'use',
+            },
+          });
+
+          if (!getMaterial) {
+            return res.status(400).send({ message: 'material_not_found' });
+          }
+
+
+
       
           const requestReturnJob = await prisma.job.create({
             data: {
@@ -66,6 +82,7 @@ module.exports = {
               materialId: parseInt(materialId),
               state: 'wait',
               remark: remark ?? null,
+              accountCode: getMaterial.accountCode,
               priority: priority,
             },
             select: {
@@ -283,6 +300,8 @@ module.exports = {
             materialSpec: r.Material?.materialSpec || '',
             state: r.state,
             remark: r.remark || '',
+            remarkMC: r.remarkMC || '',
+            accountCode: r.accountCode || '',
             priority: r.priority,
             status: r.status
           }));
@@ -365,6 +384,7 @@ module.exports = {
             materialSpec: r.Material?.materialSpec || '',
             state: r.state,
             remark: r.remark || '',
+            accountCode: r.accountCode || '',
             priority: r.priority,
             status: r.status
           }));

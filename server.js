@@ -67,7 +67,7 @@ app.post('/api/mc/stockIn',(req, res) => mcController.stockIn(req,res))
 app.get('/api/mc/fetchIncomingAll',(req, res) => mcController.fetchIncomingAll(req,res))
 app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
 app.post('/api/mc/stockOutByProduction',(req, res) => mcController.stockOutByProduction(req,res))
-app.post('/api/mc/stockInByProduction',(req, res) => mcController.stockInByProduction (req,res))
+app.post('/api/mc/stockInByProduction',(req, res) => mcController.stockInByProduction(req,res))
 
 
 

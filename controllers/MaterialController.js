@@ -91,51 +91,93 @@ module.exports = {
 
     getMaterialByPbass: async (req, res) => {
       try {
-        const apiUrl = process.env.PBASS_API_URL;
         const token = process.env.PBASS_TOKEN;
     
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
+        const apiConfigs = [
+          {
+            url: process.env.PBASS_API_URL,
+            accountCode: '4520'
+          },
+          {
+            url: process.env.PBASS_API_URL_4605A,
+            accountCode: '4605-A'
+          },
+          {
+            url: process.env.PBASS_API_URL_4605CZ,
+            accountCode: '4605CZ'
+          },
+          {
+            url: process.env.PBASS_API_URL_4605C,
+            accountCode: '4605-C'
           }
-        });
+        ].filter(x => x.url);
     
-        const data = await response.json();
-    
-        if (!response.ok) {
-          return res.status(response.status).send({
-            error: data || 'External API error'
+        if (!apiConfigs.length) {
+          return res.status(400).send({
+            error: 'PBASS API URL is not configured'
           });
         }
     
-        const rows = Array.isArray(data?.Data) ? data.Data : [];
+        const allRows = [];
+        const apiSummaries = [];
     
-        const normalizedRows = rows
-          .map(item => ({
-            materialNo: item?.ITEM_NO?.toString().trim(),
-            materialName: item?.ITEM_NAME?.toString().trim() || '',
-            materialSpec: item?.SPEC?.toString().trim() || ''
-          }))
-          .filter(item => item.materialNo);
+        for (const cfg of apiConfigs) {
+          const response = await fetch(cfg.url, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+    
+          const data = await response.json();
+    
+          if (!response.ok) {
+            return res.status(response.status).send({
+              error: data || `External API error (${cfg.accountCode})`
+            });
+          }
+    
+          const rows = Array.isArray(data?.Data) ? data.Data : [];
+    
+          apiSummaries.push({
+            accountCode: cfg.accountCode,
+            totalFromApi: rows.length
+          });
+    
+          for (const item of rows) {
+            allRows.push({
+              materialNo: item?.ITEM_NO?.toString().trim(),
+              materialName: item?.ITEM_NAME?.toString().trim() || '',
+              materialSpec: item?.SPEC?.toString().trim() || '',
+              accountCode: cfg.accountCode
+            });
+          }
+        }
+    
+        const normalizedRows = allRows.filter(item => item.materialNo);
     
         const uniqueMap = new Map();
         const duplicateInPayload = [];
     
         for (const item of normalizedRows) {
-          if (uniqueMap.has(item.materialNo)) {
+          const mapKey = `${item.materialNo}__${item.accountCode || ''}`;
+    
+          if (uniqueMap.has(mapKey)) {
             duplicateInPayload.push({
               materialNo: item.materialNo,
-              materialName: item.materialName
+              materialName: item.materialName,
+              materialSpec: item.materialSpec,
+              accountCode: item.accountCode
             });
             continue;
           }
-          uniqueMap.set(item.materialNo, item);
+    
+          uniqueMap.set(mapKey, item);
         }
     
         const uniqueRows = Array.from(uniqueMap.values());
-        const materialNos = uniqueRows.map(item => item.materialNo);
+        const materialNos = [...new Set(uniqueRows.map(item => item.materialNo))];
     
         const existingMaterials = await prisma.material.findMany({
           where: {
@@ -143,28 +185,59 @@ module.exports = {
             status: 'use'
           },
           select: {
-            materialNo: true
+            id: true,
+            materialNo: true,
+            materialName: true,
+            materialSpec: true,
+            accountCode: true
           }
         });
     
-        const existingSet = new Set(existingMaterials.map(item => item.materialNo));
+        const existingMap = new Map(
+          existingMaterials.map(item => [item.materialNo, item])
+        );
     
         const duplicateItems = [];
         const createItems = [];
+        const updateItems = [];
     
         for (const item of uniqueRows) {
-          if (existingSet.has(item.materialNo)) {
-            duplicateItems.push({
-              materialNo: item.materialNo,
-              materialName: item.materialName
-            });
-          } else {
+          const existing = existingMap.get(item.materialNo);
+    
+          if (!existing) {
             createItems.push({
               materialNo: item.materialNo,
               materialName: item.materialName,
-              materialSpec: item.materialSpec
+              materialSpec: item.materialSpec,
+              accountCode: item.accountCode
             });
+            continue;
           }
+    
+          const sameName = (existing.materialName || '') === (item.materialName || '');
+          const sameSpec = (existing.materialSpec || '') === (item.materialSpec || '');
+          const sameAccountCode = (existing.accountCode || '') === (item.accountCode || '');
+    
+          if (sameName && sameSpec && sameAccountCode) {
+            duplicateItems.push({
+              materialNo: item.materialNo,
+              materialName: item.materialName,
+              materialSpec: item.materialSpec,
+              accountCode: item.accountCode
+            });
+            continue;
+          }
+    
+          updateItems.push({
+            id: existing.id,
+            materialNo: item.materialNo,
+            oldMaterialName: existing.materialName,
+            oldMaterialSpec: existing.materialSpec,
+            oldAccountCode: existing.accountCode || '',
+            newMaterialName: item.materialName,
+            newMaterialSpec: item.materialSpec,
+            newAccountCode: item.accountCode || ''
+          });
         }
     
         function chunkArray(arr, size) {
@@ -184,17 +257,33 @@ module.exports = {
           });
         }
     
+        for (const item of updateItems) {
+          await prisma.material.update({
+            where: {
+              id: item.id
+            },
+            data: {
+              materialName: item.newMaterialName,
+              materialSpec: item.newMaterialSpec,
+              accountCode: item.newAccountCode
+            }
+          });
+        }
+    
         return res.send({
           message: 'Import material success',
-          totalFromApi: rows.length,
+          totalFromApi: normalizedRows.length,
           validRows: normalizedRows.length,
           createdCount: createItems.length,
+          updatedCount: updateItems.length,
           duplicateCount: duplicateItems.length,
           duplicateInPayloadCount: duplicateInPayload.length,
           totalCreateChunks: createChunks.length,
           chunkSize,
+          apiSummaries,
           duplicateItems,
-          duplicateInPayload
+          duplicateInPayload,
+          updateItems
         });
       } catch (e) {
         console.error('getMaterialByPbass error:', e);

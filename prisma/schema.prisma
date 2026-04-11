@@ -185,6 +185,7 @@ model Material {
   materialNo String
   materialName String
   materialSpec String
+  accountCode String?
   timeStamp DateTime @default(now())
   status String @default("use")
   Job Job[]
@@ -219,6 +220,8 @@ model Job {
   materialId Int
   state String
   remark String?
+  remarkMC String?
+  accountCode String?
   priority String
   status String @default("use")
   Area Area @relation(fields: [areaId], references: [id])
