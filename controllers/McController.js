@@ -40,6 +40,20 @@ module.exports = {
                 return res.status(400).send({ message: 'incoming_already' });
               }
 
+
+            const checkInMaterialMaster = await prisma.material.findFirst({
+              where:{
+                materialNo: materialNo,
+                status: 'use'
+              }
+            })
+
+            if(!checkInMaterialMaster){
+              return res.status(400).send({ message: 'not_found_this_Material_in_Master' });
+            }
+
+
+
               const data = await prisma.$transaction(async (tx) => {
                 const incoming = await tx.incoming.create({
                     data: {
