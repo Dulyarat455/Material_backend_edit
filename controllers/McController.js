@@ -29,11 +29,19 @@ module.exports = {
             }
 
 
-            const checkIncoming = await prisma.incoming.findFirst({
+              const checkIncoming = await prisma.incoming.findFirst({
                 where: {
                   jobNo: jobNo,
                   status: 'use',
+                  StockOut: {
+                    none: {
+                      status: 'use'
+                    }
+                  }
                 },
+                orderBy: {
+                  id: 'desc'
+                }
               });
 
               if (checkIncoming) {
@@ -564,15 +572,23 @@ module.exports = {
             
             const results = await prisma.$transaction(async (tx) => {
   
-              const getIncoming =  await tx.incoming.findFirst({
-                where:{
-                    jobNo: jobNoIncoming,
-                    status: 'use'
+              const getIncoming = await tx.incoming.findFirst({
+                where: {
+                  jobNo: jobNoIncoming,
+                  status: 'use',
+                  StockOut: {
+                    none: {
+                      status: 'use'
+                    }
                   }
-              })       
-  
+                },
+                orderBy: {
+                  id: 'desc'
+                }
+              });
+
               if(!getIncoming){
-                throw new Error('incoming_notFound');
+                throw new Error('incoming_notFound_inSystem');
               }
   
               const incomingIdInt = parseInt(getIncoming.id);
@@ -599,9 +615,8 @@ module.exports = {
                 if (checkTransactionStore) {
                   throw new Error('canNot_returnStockIn_have_material_inStock');
                 }
-      
-                
-  
+
+
   
                 const updateIncoming = await tx.incoming.update({
                   where:{
@@ -730,7 +745,7 @@ module.exports = {
         if (
           e.message === 'this_job_notFound' ||
           e.message === 'canNot_returnStockIn_have_material_inStock' ||
-          e.message ===  'incoming_notFound'
+          e.message ===  'incoming_notFound_inSystem'
         ) {
           return res.status(400).send({ message: e.message });
         }
