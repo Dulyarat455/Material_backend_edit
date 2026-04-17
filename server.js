@@ -14,10 +14,11 @@ const mcController = require('./controllers/McController');
 const materialController = require('./controllers/MaterialController');
 const issueController = require('./controllers/IssueController');
 const returnController = require('./controllers/ReturnController');
-const stockOutRepport = require('./controllers/StockOutReport');
-const stockLocReport = require('./controllers/StockLocReport');
-const historyReport = require('./controllers/HistoryReport');
-const inventoryReport = require('./controllers/InventoryReport');
+
+
+
+
+
 
 
 
