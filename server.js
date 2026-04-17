@@ -68,7 +68,7 @@ app.get('/api/mc/fetchIncomingAll',(req, res) => mcController.fetchIncomingAll(r
 app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
 app.post('/api/mc/stockOutByProduction',(req, res) => mcController.stockOutByProduction(req,res))
 app.post('/api/mc/stockInByProduction',(req, res) => mcController.stockInByProduction(req,res))
-
+app.post ('/api/mc/stockOutMaterial',(req,res) => mcController.outStock(req,res))
 
 
 //issue

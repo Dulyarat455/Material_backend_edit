@@ -726,47 +726,97 @@ module.exports = {
     
     
 
-    outStock : async(req,res)=>{
-      try{
-        const {incomingId, type, inchargeByUserId, remark } = req.body;
-        
-        if(incomingId == null || !type || inchargeByUserId == null  ){
-            return res.status(400).send({ message: 'missing_required_fields' });
+    outStock: async (req, res) => {
+      try {
+        const { incomingId, inchargeByUserId, remark } = req.body;
+    
+        if (incomingId == null || inchargeByUserId == null) {
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+    
+        const data = await prisma.$transaction(async (tx) => {
+          const incoming = await tx.incoming.findFirst({
+            where: {
+              id: parseInt(incomingId),
+              status: 'use'
+            }
+          });
+    
+          if (!incoming) {
+            throw new Error('incoming_notFound');
           }
-
-
-
-
-          const stockOut = await prisma.stockOut.create({
+    
+          const incomingInStockOut = await tx.stockOut.findFirst({
+            where: {
+              incomingId: parseInt(incomingId),
+              status: 'use'
+            }
+          });
+    
+          if (incomingInStockOut) {
+            throw new Error('incoming_in_stockOut_already');
+          }
+    
+          const checkTransactionStore = await tx.transactionStore.findFirst({
+            where: {
+              incomingId: parseInt(incomingId),
+              status: 'use'
+            }
+          });
+    
+          if (!checkTransactionStore) {
+            throw new Error('do_not_have_this_incoming_inStore');
+          }
+    
+          const deletedTransactionStore = await tx.transactionStore.update({
+            where: {
+              id: parseInt(checkTransactionStore.id)
+            },
+            data: {
+              status: 'delete'
+            }
+          });
+    
+          const stockOut = await tx.stockOut.create({
             data: {
               incomingId: parseInt(incomingId),
-              type:"QC",
               inchargeByUserId: parseInt(inchargeByUserId),
-              remark: remark || ""
+              remark: remark || ''
             },
             select: {
               id: true,
               incomingId: true,
-              type: true,
               inchargeByUserId: true,
               remark: true
-            },
+            }
           });
-
-        return res.send({
-            message: 'out_stock_success',
-            data: stockOut,
+    
+          return {
+            deletedTransactionStore,
+            stockOut
+          };
         });
-
-
-
-
-
-      }catch(e){
+    
+        return res.send({
+          message: 'out_stock_success',
+          data
+        });
+      } catch (e) {
+        if (e.message === 'incoming_notFound') {
+          return res.status(400).send({ message: 'incoming_notFound' });
+        }
+    
+        if (e.message === 'incoming_in_stockOut_already') {
+          return res.status(400).send({ message: 'incoming_in_stockOut_already' });
+        }
+    
+        if (e.message === 'do_not_have_this_incoming_inStore') {
+          return res.status(400).send({ message: 'do_not_have_this_incoming_inStore' });
+        }
+    
         return res.status(500).send({ error: e.message });
       }
     },
-
 
 
 
