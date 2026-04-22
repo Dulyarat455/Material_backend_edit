@@ -28,6 +28,7 @@ model User {
     TransactionStoreHistory TransactionStoreHistory[]
     Job Job[]
     StockOut StockOut[]
+    RemoveUser RemoveUser[]
 }
 
 
@@ -260,7 +261,13 @@ model IncomingLoc {
 
 
 
-
+model RemoveUser {
+  id Int @id() @default(autoincrement())
+  userId Int
+  timeStmp DateTime @default(now())
+  status String @default("use")
+  User User @relation(fields: [userId], references: [id])
+}
 
 
 

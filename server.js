@@ -14,12 +14,11 @@ const mcController = require('./controllers/McController');
 const materialController = require('./controllers/MaterialController');
 const issueController = require('./controllers/IssueController');
 const returnController = require('./controllers/ReturnController');
-
-
-
-
-
-
+const inventoryReportController = require('./controllers/InventoryReport');
+const stockOutReportController = require('./controllers/StockOutReport');
+const transactionJobController = require('./controllers/TransactionJobReport');
+const transactionStoreController = require('./controllers/TransactionStoreReport');
+const transactionAllController = require('./controllers/TransactionAllReport');
 
 
 app.use(cors());
@@ -30,15 +29,15 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.post('/api/user/create',(req, res) => userController.create(req,res))
 app.post('/api/user/signin',(req, res) => userController.signin(req,res))
 app.post('/api/user/mapSectionGroupUser',(req, res) => userController.mapSectionGroupUser(req,res))
-
+app.get('/api/user/list',(req, res) => userController.list(req,res))
 
 //Section
 app.post('/api/section/create',(req, res) => sectionController.add(req,res))
-
+app.get('/api/section/list',(req, res) => sectionController.list(req,res))
 
 //Group
 app.post('/api/group/create',(req, res) => groupController.add(req,res))
-
+app.get('/api/group/list',(req, res) => groupController.list(req,res))
 
 //StoreMaster
 app.post('/api/storeMaster/create',(req, res) => storeMasterController.add(req,res))
@@ -88,36 +87,33 @@ app.post('/api/reurn/fetchReturnFollowStateJob',(req ,res) => returnController.f
 
 
 
+//inventoryReport
+
+app.get('/api/inventory/list',(req, res) => inventoryReportController.list(req,res))
+
+
 //StockOutReport
 
+app.get('/api/stockOut/list',(req, res) => stockOutReportController.list(req,res))
 
 
 
 
+//TransactionJobReport
 
-//StockLocReport
-
-
-
+app.get('/api/reportJob/list',(req, res) => transactionJobController.list(req,res))
 
 
 
 
+//TransactionStoreReport     
 
-//HistoryReport
-
-
-
+app.get('/api/transactionStore/list',(req, res) => transactionStoreController.list(req,res))
 
 
+//TransactionAllReport
 
-
-
-//InventoryReport     
-
-
-
-
+app.get('/api/transactionAll/list',(req, res) => transactionAllController.list(req,res))
 
 
 

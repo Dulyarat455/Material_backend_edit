@@ -1,0 +1,28 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateTable
+CREATE TABLE [dbo].[RemoveUser] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [userId] INT NOT NULL,
+    [timeStmp] DATETIME2 NOT NULL CONSTRAINT [RemoveUser_timeStmp_df] DEFAULT CURRENT_TIMESTAMP,
+    [status] NVARCHAR(1000) NOT NULL CONSTRAINT [RemoveUser_status_df] DEFAULT 'use',
+    CONSTRAINT [RemoveUser_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+-- AddForeignKey
+ALTER TABLE [dbo].[RemoveUser] ADD CONSTRAINT [RemoveUser_userId_fkey] FOREIGN KEY ([userId]) REFERENCES [dbo].[User]([id]) ON DELETE NO ACTION ON UPDATE CASCADE;
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH
