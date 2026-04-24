@@ -124,7 +124,9 @@ module.exports = {
                       incomingId: parseInt(incoming.id),
                       userId: parseInt(userId),
                       stockNote: stockNote,
-                      type: "StockIn"
+                      type: "StockIn",
+                      coil: parseInt(coil),
+                      qty: parseInt(qtyKgsPcs)
                     }
                 });
     
@@ -343,7 +345,9 @@ module.exports = {
               incomingId: parseInt(incomingId),
               userId: parseInt(userId),
               stockNote: stockNote || '',
-              type: "MoveArea"
+              type: "MoveArea",
+              coil: parseInt(checkIncoming.coil),
+              qty: parseInt(checkIncoming.qtyKgsPcs)
             },
           });
     
@@ -670,7 +674,9 @@ module.exports = {
                     incomingId: incomingIdInt,
                     userId: userIdInt,
                     stockNote: stockNote, 
-                    type: "ReturnStockIn"
+                    type: "ReturnStockIn",
+                    coil: parseInt(coil)  ,
+                    qty:  parseInt(qty)
                    }
                 })
   
@@ -810,7 +816,9 @@ module.exports = {
             data: {
               incomingId: parseInt(incomingId),
               inchargeByUserId: parseInt(inchargeByUserId),
-              remark: remark || ''
+              remark: remark || '',
+              coil: parseInt(incoming.coil),
+              qty: parseInt(incoming.qtyKgsPcs) 
             },
             select: {
               id: true,
@@ -846,6 +854,60 @@ module.exports = {
         return res.status(500).send({ error: e.message });
       }
     },
+
+
+
+    fetchOneIncoming: async (req, res) => {
+      try {
+        const { jobNo } = req.body;
+    
+        if (!jobNo) {
+          return res.status(400).send({ error: 'jobNo is required' });
+        }
+    
+        const incoming = await prisma.incoming.findFirst({
+          where: {
+            jobNo,
+            status: 'use',
+          },
+          orderBy: {
+            id: 'desc'
+          },
+          select: {
+            id: true
+          }
+        });
+    
+        if (!incoming?.id) {
+          return res.send({ results: '' });
+        }
+    
+        const transactionStore = await prisma.transactionStoreHistory.findFirst({
+          where: {
+            incomingId: incoming.id,
+            status: 'use',
+          },
+          orderBy: {
+            timeStmp: 'desc'
+          },
+          select: {
+            stockNote: true
+          }
+        });
+    
+        return res.send({
+          results: transactionStore?.stockNote || ''
+        });
+      } catch (e) {
+        return res.status(500).send({ error: e.message });
+      }
+    },
+
+
+
+  
+
+    
 
 
 

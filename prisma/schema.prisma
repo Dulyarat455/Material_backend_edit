@@ -173,6 +173,8 @@ model TransactionStoreHistory {
   userId Int
   stockNote String?
   type String?
+  coil Int?
+  qty Int?
   status String @default("use")
   Store Store @relation(fields: [storeId], references: [id])
   Incoming Incoming @relation(fields: [incomingId], references: [id])
@@ -238,6 +240,8 @@ model StockOut {
   type String?
   inchargeByUserId Int
   remark String?
+  coil Int?
+  qty Int?
   timeStmp DateTime @default(now())
   status String @default("use")
   Incoming Incoming @relation(fields: [incomingId], references: [id])
