@@ -224,6 +224,99 @@ module.exports = {
     },
 
 
+
+    
+    signInRfId: async (req, res) => {
+      try{
+        const {rfId} = req.body;
+        
+        if ( rfId == null ) {
+            return res.status(400).send({ message: 'missing_required_fields' });
+        }
+
+        const u = await prisma.user.findFirst({
+          where: {
+            rfId: rfId ,
+            status: 'use',
+          },
+          include: {
+            MapSectionGroupUser: {
+              where: {
+                status: 'use',
+              },
+              include: {
+                Group: true,
+                Section: true,
+              },
+              take: 1,
+            },
+          },
+        });       
+        
+        
+        if(!u){
+          return res.status(401).send({ message: 'unauthorized' });
+        }
+
+
+        const checkUserRemove = await prisma.removeUser.findFirst({
+          where: {
+            userId: parseInt(u.id),
+            status: 'use'
+          }
+        });
+    
+        if (checkUserRemove) {
+          return res.status(400).send({ message: 'user_has_been_delete' });
+        }
+        
+        
+
+
+        const map = u.MapSectionGroupUser?.[0] || null;
+    
+        const payload = {
+          id: u.id,
+          empNo: u.empNo,
+          name: u.name,
+          role: u.role,
+          rfId: u.rfId,
+          status: u.status,
+    
+          groupId: map?.groupId || null,
+          groupName: map?.Group?.name || null,
+          sectionId: map?.sectionId || null,
+          sectionName: map?.Section?.name || null,
+        };
+    
+        const key = process.env.SECRET_KEY;
+        if (!key) {
+          return res.status(500).send({ message: 'missing_SECRET_KEY' });
+        }
+    
+        const token = jwt.sign(
+          {
+            id: payload.id,
+            empNo: payload.empNo,
+            role: payload.role,
+            name: payload.name,
+            groupId: payload.groupId,
+            groupName: payload.groupName,
+            sectionId: payload.sectionId,
+            sectionName: payload.sectionName,
+          },
+          key,
+          { expiresIn: '30d' }
+        );
+  
+        return res.send({ token, ...payload });
+      }catch(e){
+        return res.status(500).send({ error: e.message });
+      }
+
+    },
+
+
     mapSectionGroupUser: async (req,res) =>{
       try{
          const {userId, groupId, sectionId} = req.body;
@@ -1153,5 +1246,8 @@ module.exports = {
         return res.status(500).send({ error: e.message });
       }
     },
+
+
+
 }
 

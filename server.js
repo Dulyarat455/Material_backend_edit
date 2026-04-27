@@ -47,6 +47,7 @@ app.post('/api/user/edit',(req, res) => userController.edit(req,res))
 app.post('/api/user/delete',(req, res) => userController.delete(req,res))
 app.post('/api/user/exportExcel',(req, res) =>  userController.exportExcel(req,res))
 app.post('/api/user/importExcel',upload.single('file'),(req, res) => userController.importExcel(req,res))
+app.post('/api/user/signInRfId',(req, res) => userController.signInRfId(req,res))
 
 
 //Section
@@ -94,6 +95,8 @@ app.post('/api/issue/create',(req, res) => issueController.createIssue(req,res))
 app.post('/api/issue/fetchIssueByUserId',(req, res) => issueController.fetchIssueByUserId(req,res))
 app.get('/api/issue/fetIssueAll',(req, res)=> issueController.fetchIssueAll(req,res))
 app.post('/api/issue/fetchIssueFollowStateJob',(req ,res) => issueController.fetchIssueFollowStateJob(req,res))
+app.post('/api/issue/delete',(req,res) => issueController.delete(req,res))
+
 
 
 //return
@@ -101,7 +104,7 @@ app.post('/api/return/create',(req, res) => returnController.createReturn(req,re
 app.post('/api/return/fetchReturnByUserId',(req, res) => returnController.fetchReturnByUserId(req,res))
 app.get('/api/return/fetchReturnAll',(req, res)=> returnController.fetchReturnAll(req,res))
 app.post('/api/reurn/fetchReturnFollowStateJob',(req ,res) => returnController.fetchReturnFollowStateJob(req,res))
-
+app.post('/api/return/delete',(req, res) => returnController.delete(req,res))
 
 
 
@@ -116,7 +119,7 @@ app.post('/api/inventory/editStockNote',(req, res) => inventoryReportController.
 //StockOutReport
 
 app.get('/api/stockOut/list',(req, res) => stockOutReportController.list(req,res))
-
+app.post('/api/stockOut/exportExcel',(req, res) => stockOutReportController.exportExcel(req,res))
 
 
 
@@ -135,7 +138,7 @@ app.get('/api/transactionStore/list',(req, res) => transactionStoreController.li
 //TransactionAllReport
 
 app.get('/api/transactionAll/list',(req, res) => transactionAllController.list(req,res))
-
+app.post('/api/transactionAll/exportExcel',(req, res) => transactionAllController.exportExcel(req,res))
 
 
 

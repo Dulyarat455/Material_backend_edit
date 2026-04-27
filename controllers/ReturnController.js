@@ -250,12 +250,10 @@ module.exports = {
               const aUrgent = String(a.priority || '').trim().toLowerCase() === 'urgent' ? 1 : 0;
               const bUrgent = String(b.priority || '').trim().toLowerCase() === 'urgent' ? 1 : 0;
       
-              // 1) Urgent มาก่อน
               if (aUrgent !== bUrgent) {
                 return bUrgent - aUrgent;
               }
       
-              // 2) ในกลุ่มเดียวกัน เรียง requestTime เก่าสุดก่อน
               const aTime = new Date(a.requestTime).getTime();
               const bTime = new Date(b.requestTime).getTime();
       
@@ -277,34 +275,72 @@ module.exports = {
       
             sortedRows = rows;
           }
-
-
       
-          const results = sortedRows.map((r) => ({
-            id: r.id,
-            jobNo: r.jobNo,
-            incomingId: r.IncomingId ?? null,
-            areaId: r.areaId,
-            groupId: r.groupId,
-            areaName: r.Area?.name || '',
-            requestByUserId: r.requestByUserId,
-            requestUserEmpNo: r.RequestUser?.empNo || '',
-            requestUserName: r.RequestUser?.name || '',
-            requestTime: r.requestTime,
-            inchargeByUserId: r.inchargeByUserId ?? null,
-            inchargeTime: r.inchargeTime ?? null,
-            type: r.type,
-            materialId: r.materialId,
-            materialNo: r.Material?.materialNo || '',
-            materialName: r.Material?.materialName || '',
-            materialSpec: r.Material?.materialSpec || '',
-            state: r.state,
-            remark: r.remark || '',
-            remarkMC: r.remarkMC || '',
-            accountCode: r.accountCode || '',
-            priority: r.priority,
-            status: r.status
-          }));
+          const inchargeIds = Array.from(
+            new Set(
+              sortedRows
+                .map(r => r.inchargeByUserId)
+                .filter(id => id != null)
+            )
+          );
+      
+          let inchargeMap = new Map();
+      
+          if (inchargeIds.length) {
+            const inchargeUsers = await prisma.user.findMany({
+              where: {
+                id: {
+                  in: inchargeIds
+                },
+                status: 'use'
+              },
+              select: {
+                id: true,
+                empNo: true,
+                name: true
+              }
+            });
+      
+            inchargeMap = new Map(
+              inchargeUsers.map(u => [u.id, u])
+            );
+          }
+      
+          const results = sortedRows.map((r) => {
+            const inchargeUser = r.inchargeByUserId
+              ? inchargeMap.get(r.inchargeByUserId) || null
+              : null;
+      
+            return {
+              id: r.id,
+              jobNo: r.jobNo,
+              incomingId: r.IncomingId ?? null,
+              areaId: r.areaId,
+              groupId: r.groupId,
+              areaName: r.Area?.name || '',
+              requestByUserId: r.requestByUserId,
+              requestUserEmpNo: r.RequestUser?.empNo || '',
+              requestUserName: r.RequestUser?.name || '',
+              requestTime: r.requestTime,
+      
+              inchargeByUserId: r.inchargeByUserId ?? null,
+              inchargeUserEmpNo: inchargeUser?.empNo || '',
+              inchargeUserName: inchargeUser?.name || '',
+              inchargeTime: r.inchargeTime ?? null,
+      
+              type: r.type,
+              materialId: r.materialId,
+              materialNo: r.Material?.materialNo || '',
+              materialName: r.Material?.materialName || '',
+              materialSpec: r.Material?.materialSpec || '',
+              state: r.state,
+              remark: r.remark || '',
+              remarkMC: r.remarkMC || '',
+              accountCode: r.accountCode || '',
+              priority: r.priority,
+              status: r.status
+            };
+          });
       
           return res.send({ results });
       
@@ -394,9 +430,106 @@ module.exports = {
         } catch (e) {
           return res.status(500).send({ error: e.message });
         }
+      },
+
+
+
+      delete : async (req, res) => {
+        try{
+            const {jobId,userId,role} = req.body;
+
+
+            if(role === "user"){
+
+              const getJob = await prisma.job.findFirst({
+                where: { 
+                  id: parseInt(jobId), 
+                  type: "return", 
+                  state: "wait",
+                  status: 'use' 
+                }
+              });
+  
+  
+              if (!getJob) {
+                return res.status(404).send({ message: 'Job_not_found' });
+              }
+  
+              const checkJobPermitted = await prisma.job.findFirst({
+                where: { 
+                  id: parseInt(jobId),
+                  type: "return", 
+                  state: "wait",
+                  requestByUserId: parseInt(userId), 
+                  status: 'use' }
+              });
+  
+              if (!checkJobPermitted) {
+                return res.status(404).send({ message: 'You_have_not_permitted' });
+              }
+  
+  
+              const deletJob = await prisma.job.update({
+                where: { 
+                  id : parseInt(jobId),
+                  type: "return", 
+                  state: "wait",
+                  requestByUserId: parseInt(userId),
+                  status: 'use' 
+                },
+                data:{
+                    status: 'delete'
+                }
+              })  
+  
+  
+              return res.send({
+                message: 'delete_jobIssue_success'
+              });
+
+            }
+            else{
+
+              const getJob = await prisma.job.findFirst({
+                where: { 
+                  id: parseInt(jobId), 
+                  type: "return", 
+                  state: "wait",
+                  status: 'use' 
+                }
+              });
+  
+  
+              if (!getJob) {
+                return res.status(404).send({ message: 'Job_not_found' });
+              }
+
+
+
+              const deletJob = await prisma.job.update({
+                where: { 
+                  id : parseInt(jobId),
+                  type: "return", 
+                  state: "wait",
+                  status: 'use' 
+                },
+                data:{
+                    status: 'delete'
+                }
+              })  
+  
+  
+              return res.send({
+                message: 'delete_jobIssue_success'
+              });
+
+            }
+
+
+        }catch(e){
+          return res.status(500).send({ error: e.message });
+        }
       }
-
-
 
 
 
