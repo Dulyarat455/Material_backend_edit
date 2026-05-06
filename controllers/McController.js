@@ -963,9 +963,8 @@ module.exports = {
           return res.status(500).send({ message: 'missing_pbass_config' });
         }
     
-        // const requestUrl = "https://wbp5.bp.minebea.local/api_prod/sv/a32/INCOMING_MAT/*/RECEIVED_YEAR||RECEIVED_MONTH||RECEIVED_DAY BETWEEN '20260401' AND '20260408'";
         const requestUrl = `${incomingUrl}/*/RECEIVED_YEAR||RECEIVED_MONTH||RECEIVED_DAY BETWEEN '${startDate}' AND '${toDate}'`;
-
+    
         console.log('PBASS requestUrl =', requestUrl);
     
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -1001,33 +1000,93 @@ module.exports = {
           });
         }
     
-        const results = Array.isArray(rows)
-          ? rows.map((row, index) => {
-              const yyyy = String(row.RECEIVED_YEAR || '').trim();
-              const mm = String(row.RECEIVED_MONTH || '').trim().padStart(2, '0');
-              const dd = String(row.RECEIVED_DAY || '').trim().padStart(2, '0');
+        if (!Array.isArray(rows)) {
+          return res.send({
+            results: [],
+            total: 0,
+            startDate,
+            toDate,
+            requestUrl
+          });
+        }
     
-              return {
-                index: index + 1,
-                jobNo: row.JOB_NO || '',
-                recivedDate: yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '',
-                itemNo: row.ITEM_NO || '',
-                itemName: row.ITEM_NAME || '',
-                itemSpec: row.SPEC || '',
-                lotNo: row.LOT_NO || '',
-                coil: Number(row.COIL || 0),
-                qtyKgsPcs: Number(row.QTY_KGSPCS || 0),
-                supplier: row.VENDOR_CODE || '',
-                unit: row.UNIT || '',
-                invoiceNo: row.INVOICE_NO || '',
-                taxInvoiceNo: row.TAX_INVOICE_NO || '',
-                amount: Number(row.AMOUNT || 0),
-                seq: row.SEQ || '',
-                unloadBy: row.UNLOAD_BY || '',
-                remark: row.REMARK || ''
-              };
+        const toText = (v) => {
+          return v == null ? '' : String(v).trim();
+        };
+    
+        const getMaterialKind = (accountCode) => {
+          if (accountCode === '4520') return 'Material';
+          if (accountCode) return 'Chemical';
+          return 'Not Found';
+        };
+    
+        // ✅ รวม ITEM_NO แบบไม่ซ้ำ เพื่อลด query
+        const itemNos = [
+          ...new Set(
+            rows
+              .map(row => toText(row.ITEM_NO))
+              .filter(Boolean)
+          )
+        ];
+    
+        // ✅ ดึง accountCode จาก Material master ทีเดียว
+        const materials = itemNos.length
+          ? await prisma.material.findMany({
+              where: {
+                materialNo: {
+                  in: itemNos
+                },
+                status: 'use'
+              },
+              select: {
+                materialNo: true,
+                accountCode: true
+              }
             })
           : [];
+    
+        const materialMap = new Map(
+          materials.map(m => [
+            toText(m.materialNo),
+            {
+              accountCode: toText(m.accountCode)
+            }
+          ])
+        );
+    
+        const results = rows.map((row, index) => {
+          const yyyy = toText(row.RECEIVED_YEAR);
+          const mm = toText(row.RECEIVED_MONTH).padStart(2, '0');
+          const dd = toText(row.RECEIVED_DAY).padStart(2, '0');
+    
+          const itemNo = toText(row.ITEM_NO);
+          const material = materialMap.get(itemNo) || null;
+          const accountCode = material?.accountCode || '';
+    
+          return {
+            index: index + 1,
+            jobNo: toText(row.JOB_NO),
+            recivedDate: yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '',
+            itemNo,
+            itemName: toText(row.ITEM_NAME),
+            itemSpec: toText(row.SPEC),
+            lotNo: toText(row.LOT_NO),
+            coil: Number(row.COIL || 0),
+            qtyKgsPcs: Number(row.QTY_KGSPCS || 0),
+            supplier: toText(row.VENDOR_CODE),
+            unit: toText(row.UNIT),
+            invoiceNo: toText(row.INVOICE_NO),
+            taxInvoiceNo: toText(row.TAX_INVOICE_NO),
+            amount: Number(row.AMOUNT || 0),
+            seq: toText(row.SEQ),
+            unloadBy: toText(row.UNLOAD_BY),
+            remark: toText(row.REMARK),
+    
+            // ✅ เพิ่มให้ Preview
+            accountCode,
+            materialKind: getMaterialKind(accountCode)
+          };
+        });
     
         return res.send({
           results,
@@ -1036,8 +1095,10 @@ module.exports = {
           toDate,
           requestUrl
         });
+    
       } catch (e) {
         console.error('stockInPbassPreview error:', e);
+    
         return res.status(500).send({
           message: 'pbass_preview_fetch_failed',
           error: e.message,
@@ -1094,6 +1155,7 @@ module.exports = {
         }
     
         let pbassRows = [];
+    
         try {
           pbassRows = JSON.parse(rawText);
         } catch (parseError) {
@@ -1109,6 +1171,7 @@ module.exports = {
           return res.status(400).send({
             message: 'pbass_invalid_response',
             totalFromPbass: 0,
+            validCount: 0,
             successCount: 0,
             skippedCount: 0,
             createdRows: [],
@@ -1141,6 +1204,7 @@ module.exports = {
         const formatYearMonth = (row) => {
           const yyyy = toText(row.RECEIVED_YEAR);
           const mm = toText(row.RECEIVED_MONTH).padStart(2, '0');
+    
           return yyyy && mm ? `${yyyy}-${mm}` : '';
         };
     
@@ -1152,7 +1216,15 @@ module.exports = {
           return yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '';
         };
     
-        const toPreviewRow = (row, index, reason = '') => {
+        const getMaterialKind = (accountCode) => {
+          if (accountCode === '4520') return 'Material';
+          if (accountCode) return 'Chemical';
+          return 'Not Found';
+        };
+    
+        const toPreviewRow = (row, index, reason = '', accountCode = '') => {
+          const safeAccountCode = toText(accountCode);
+    
           return {
             index: index + 1,
             jobNo: toText(row.JOB_NO),
@@ -1171,7 +1243,11 @@ module.exports = {
             seq: toText(row.SEQ),
             unloadBy: toText(row.UNLOAD_BY),
             remark: toText(row.REMARK),
-            reason
+            reason,
+    
+            // ✅ แนบกลับไปทุก case เสมอ
+            accountCode: safeAccountCode,
+            materialKind: getMaterialKind(safeAccountCode)
           };
         };
     
@@ -1190,18 +1266,46 @@ module.exports = {
           const jobNo = toText(row.JOB_NO);
           const materialNo = toText(row.ITEM_NO);
     
+          let material = null;
+          let accountCode = '';
+    
+          // ✅ ถ้ามี ITEM_NO ให้หา Material ก่อน เพื่อให้ accountCode แนบได้ทุก case หลังจากนี้
+          if (materialNo) {
+            material = materialCache.get(materialNo);
+    
+            if (material === undefined) {
+              material = await prisma.material.findFirst({
+                where: {
+                  materialNo: materialNo,
+                  status: 'use'
+                },
+                select: {
+                  id: true,
+                  materialNo: true,
+                  materialName: true,
+                  materialSpec: true,
+                  accountCode: true
+                }
+              });
+    
+              materialCache.set(materialNo, material || null);
+            }
+    
+            accountCode = material?.accountCode || '';
+          }
+    
           if (!jobNo) {
-            skippedRows.push(toPreviewRow(row, i, 'missing_jobNo'));
+            skippedRows.push(toPreviewRow(row, i, 'missing_jobNo', accountCode));
             continue;
           }
     
           if (!materialNo) {
-            skippedRows.push(toPreviewRow(row, i, 'missing_materialNo'));
+            skippedRows.push(toPreviewRow(row, i, 'missing_materialNo', accountCode));
             continue;
           }
     
           if (seenJobNoInBatch.has(jobNo)) {
-            skippedRows.push(toPreviewRow(row, i, 'duplicate_jobNo_in_pbass_batch'));
+            skippedRows.push(toPreviewRow(row, i, 'duplicate_jobNo_in_pbass_batch', accountCode));
             continue;
           }
     
@@ -1227,32 +1331,12 @@ module.exports = {
           });
     
           if (checkIncoming) {
-            skippedRows.push(toPreviewRow(row, i, 'incoming_already'));
+            skippedRows.push(toPreviewRow(row, i, 'incoming_already', accountCode));
             continue;
           }
     
-          let material = materialCache.get(materialNo);
-    
-          if (material === undefined) {
-            material = await prisma.material.findFirst({
-              where: {
-                materialNo: materialNo,
-                status: 'use'
-              },
-              select: {
-                id: true,
-                materialNo: true,
-                materialName: true,
-                materialSpec: true,
-                accountCode: true
-              }
-            });
-    
-            materialCache.set(materialNo, material || null);
-          }
-    
           if (!material) {
-            skippedRows.push(toPreviewRow(row, i, 'not_found_this_Material_in_Master'));
+            skippedRows.push(toPreviewRow(row, i, 'not_found_this_Material_in_Master', accountCode));
             continue;
           }
     
@@ -1260,7 +1344,8 @@ module.exports = {
             index: i,
             row,
             material,
-            targetStoreId: material.accountCode === '4520' ? 47 : 48
+            accountCode,
+            targetStoreId: accountCode === '4520' ? 47 : 48
           });
         }
     
@@ -1274,6 +1359,7 @@ module.exports = {
         for (const item of validRows) {
           const row = item.row;
           const material = item.material;
+          const accountCode = item.accountCode || material?.accountCode || '';
           const targetStoreId = Number(item.targetStoreId);
     
           const coilInt = toInt(row.COIL);
@@ -1394,14 +1480,10 @@ module.exports = {
               timeout: 20000
             });
     
-            const preview = toPreviewRow(row, item.index, '');
-    
             const createdItem = {
-              ...preview,
+              ...toPreviewRow(row, item.index, 'success', accountCode),
               incomingId: createdResult.incoming.id,
-              storeId: targetStoreId,
-              accountCode: material.accountCode || '',
-              reason: 'success'
+              storeId: targetStoreId
             };
     
             createdRows.push(createdItem);
@@ -1415,6 +1497,7 @@ module.exports = {
             console.error('PBASS create row failed:', {
               jobNo: toText(row.JOB_NO),
               itemNo: toText(row.ITEM_NO),
+              accountCode,
               error: rowError.message
             });
     
@@ -1423,7 +1506,9 @@ module.exports = {
                 ? 'incoming_already'
                 : `create_failed: ${rowError.message}`;
     
-            skippedRows.push(toPreviewRow(row, item.index, reason));
+            skippedRows.push(
+              toPreviewRow(row, item.index, reason, accountCode)
+            );
           }
         }
     
@@ -1435,7 +1520,8 @@ module.exports = {
         if (createdRows.length > 0) {
           syncStockIn = await prisma.syncTimeStmp.create({
             data: {
-              remark: 'SyncStockIn'
+              remark: 'SyncStockIn',
+              userId: parseInt(userId)
             },
             select: {
               id: true,
@@ -1480,6 +1566,122 @@ module.exports = {
 
 
 
+    getSyncTimeStmp: async (req, res) => {
+      try {
+        const latestSync = await prisma.syncTimeStmp.findFirst({
+          where: {
+            status: 'use',
+          },
+          orderBy: [
+            { timeStmp: 'desc' },
+            { id: 'desc' },
+          ],
+          select: {
+            id: true,
+            remark: true,
+            userId: true,
+            timeStmp: true,
+            status: true,
+          },
+        });
+    
+        if (!latestSync) {
+          return res.send({
+            results: null,
+            message: 'sync_timestamp_not_found',
+          });
+        }
+    
+        let user = null;
+    
+        if (latestSync.userId != null) {
+          user = await prisma.user.findFirst({
+            where: {
+              id: Number(latestSync.userId),
+              status: 'use',
+            },
+            select: {
+              id: true,
+              empNo: true,
+              name: true,
+              role: true,
+              MapSectionGroupUser: {
+                where: {
+                  status: 'use',
+                },
+                select: {
+                  id: true,
+                  Group: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                  Section: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+        }
+    
+        const firstMap = user?.MapSectionGroupUser?.[0] || null;
+    
+        return res.send({
+          results: {
+            id: latestSync.id,
+            remark: latestSync.remark,
+            userId: latestSync.userId,
+            timeStmp: latestSync.timeStmp,
+            status: latestSync.status,
+    
+            user: user
+              ? {
+                  id: user.id,
+                  empNo: user.empNo,
+                  name: user.name,
+                  role: user.role,
+                }
+              : null,
+    
+            group: firstMap?.Group
+              ? {
+                  id: firstMap.Group.id,
+                  name: firstMap.Group.name,
+                }
+              : null,
+    
+            section: firstMap?.Section
+              ? {
+                  id: firstMap.Section.id,
+                  name: firstMap.Section.name,
+                }
+              : null,
+    
+            // เผื่อ user มีหลาย group/section
+            groups: user?.MapSectionGroupUser?.map((m) => ({
+              id: m.Group?.id,
+              name: m.Group?.name,
+            })).filter((x) => x.id != null) || [],
+    
+            sections: user?.MapSectionGroupUser?.map((m) => ({
+              id: m.Section?.id,
+              name: m.Section?.name,
+            })).filter((x) => x.id != null) || [],
+          },
+        });
+      } catch (e) {
+        return res.status(500).send({ error: e.message });
+      }
+    },
+
+
+
+
     // =============
     // delete admin only
     // =============
@@ -1493,13 +1695,6 @@ module.exports = {
 
       }
     },
-
-
-    importExcel : async (req,res) =>{
-
-    }
-
-
 
 
 

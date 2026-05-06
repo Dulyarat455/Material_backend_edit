@@ -139,7 +139,7 @@ app.post ('/api/mc/stockOutMaterial',(req, res) => mcController.outStock(req,res
 app.post('/api/mc/fetchOneIncoming',(req, res) => mcController.fetchOneIncoming(req,res))
 app.post('/api/mc/stockInPbassPreview',(req, res) => mcController.stockInPbassPreview(req,res))
 app.post('/api/mc/stockInPbassSubmit',(req, res) => mcController.stockInPbassSubmit(req,res))
-
+app.get('/api/mc/getSyncTimeStmp',(req, res) => mcController.getSyncTimeStmp(req,res))
 
 
 
