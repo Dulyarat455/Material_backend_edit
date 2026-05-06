@@ -14,6 +14,16 @@ const upload = multer({ storage: multer.memoryStorage() });
 dotenv.config();
 
 
+
+
+const allowedOrigins = [
+   // 'http://localhost:4200',
+   'http://10.121.49.215:4200', // 👈 ใส่ IP เครื่อง Server notebook
+  //'http://10.121.1.85'// เครื่อง server จริง
+
+];
+
+
 const userController = require('./controllers/UserController');
 const sectionController = require('./controllers/SectionController');
 const groupController = require('./controllers/GroupController');
@@ -31,9 +41,47 @@ const transactionStoreController = require('./controllers/TransactionStoreReport
 const transactionAllController = require('./controllers/TransactionAllReport');
 
 
-app.use(cors());
+app.use(cors({
+   origin: allowedOrigins,
+   credentials: true
+}));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+
+
+
+//add new for socket
+const http = require('http');
+const server = http.createServer(app);
+
+const { Server } = require('socket.io');
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
+
+// เก็บ io ไว้ใน global ให้ controller เรียกใช้ได้
+global.io = io;
+
+// ลอง log ดู
+io.on('connection', (socket) => {
+    console.log('client connected:', socket.id);
+  
+    socket.on('disconnect', () => {
+      console.log('client disconnected:', socket.id);
+    });
+});
+// ==== จบส่วน socket.io ====
+
+
+
+
 
 
 
@@ -87,8 +135,13 @@ app.get('/api/mc/fetchIncomingAll',(req, res) => mcController.fetchIncomingAll(r
 app.post('/api/mc/moveArea',(req, res) => mcController.moveArea(req,res))
 app.post('/api/mc/stockOutByProduction',(req, res) => mcController.stockOutByProduction(req,res))
 app.post('/api/mc/stockInByProduction',(req, res) => mcController.stockInByProduction(req,res))
-app.post ('/api/mc/stockOutMaterial',(req,res) => mcController.outStock(req,res))
-app.post('/api/mc/fetchOneIncoming',(req,res) => mcController.fetchOneIncoming(req,res))
+app.post ('/api/mc/stockOutMaterial',(req, res) => mcController.outStock(req,res))
+app.post('/api/mc/fetchOneIncoming',(req, res) => mcController.fetchOneIncoming(req,res))
+app.post('/api/mc/stockInPbassPreview',(req, res) => mcController.stockInPbassPreview(req,res))
+app.post('/api/mc/stockInPbassSubmit',(req, res) => mcController.stockInPbassSubmit(req,res))
+
+
+
 
 //issue
 app.post('/api/issue/create',(req, res) => issueController.createIssue(req,res))
@@ -150,7 +203,7 @@ app.post('/api/transactionAll/exportExcel',(req, res) => transactionAllControlle
 
 
 
-//app.listen(3001);
-app.listen(3001,'0.0.0.0', () => {
+app.listen(3001);
+server.listen(3001,'0.0.0.0', () => {
    console.log('API + WebSocket listening on port 3001');
 });

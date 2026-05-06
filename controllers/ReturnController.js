@@ -93,6 +93,11 @@ module.exports = {
               status: true,
             },
           });
+
+      // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+       if (global.io) {
+        global.io.emit('materialJob:changed', { type: 'materialReturn', ...requestReturnJob });
+      }
       
           return res.send({
             message: 'create_ReturnJob_success',
@@ -481,10 +486,13 @@ module.exports = {
                     status: 'delete'
                 }
               })  
-  
+               // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+               if (global.io) {
+                global.io.emit('materialJob:changed', { type: 'materialReturn'});
+              }
   
               return res.send({
-                message: 'delete_jobIssue_success'
+                message: 'delete_jobReturn_success'
               });
 
             }
@@ -517,10 +525,13 @@ module.exports = {
                     status: 'delete'
                 }
               })  
-  
+                // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+                if (global.io) {
+                  global.io.emit('materialJob:changed', { type: 'materialReturn' });
+                }
   
               return res.send({
-                message: 'delete_jobIssue_success'
+                message: 'delete_jobReturn_success'
               });
 
             }

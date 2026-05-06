@@ -91,6 +91,10 @@ module.exports = {
               status: true,
             },
           });
+            // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+       if (global.io) {
+        global.io.emit('materialJob:changed', { type: 'materialIssue', ...requestIssueJob });
+      }
       
           return res.send({
             message: 'create_IssueJob_success',
@@ -478,7 +482,11 @@ module.exports = {
                 }
               })  
   
-  
+               // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+               if (global.io) {
+                global.io.emit('materialJob:changed', { type: 'materialIssue'});
+              }
+
               return res.send({
                 message: 'delete_jobIssue_success'
               });
@@ -514,7 +522,12 @@ module.exports = {
                 }
               })  
   
-  
+              // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+              if (global.io) {
+                global.io.emit('materialJob:changed', { type: 'materialIssue' });
+              }
+
+
               return res.send({
                 message: 'delete_jobIssue_success'
               });

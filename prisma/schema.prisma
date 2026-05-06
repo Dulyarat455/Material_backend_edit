@@ -275,6 +275,15 @@ model RemoveUser {
 
 
 
+model SyncTimeStmp {
+  id Int @id() @default(autoincrement())
+  remark String
+  timeStmp DateTime @default(now())
+  status String @default("use")
+}
+
+
+
 
 
 

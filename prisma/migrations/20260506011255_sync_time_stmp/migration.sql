@@ -1,0 +1,25 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateTable
+CREATE TABLE [dbo].[SyncTimeStmp] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [remark] NVARCHAR(1000) NOT NULL,
+    [timeStmp] DATETIME2 NOT NULL CONSTRAINT [SyncTimeStmp_timeStmp_df] DEFAULT CURRENT_TIMESTAMP,
+    [status] NVARCHAR(1000) NOT NULL CONSTRAINT [SyncTimeStmp_status_df] DEFAULT 'use',
+    CONSTRAINT [SyncTimeStmp_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

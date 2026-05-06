@@ -1,6 +1,8 @@
 const {PrismaClient} = require('../generated/prisma');
 const prisma = new PrismaClient();
-
+const https = require('https');
+const { execFile } = require('child_process');
+const tls = require('tls');
 
 module.exports = {
     stockIn : async (req,res) =>{
@@ -137,6 +139,11 @@ module.exports = {
                   transactionStroeHistory
                 };
             });
+
+            // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+            if (global.io) {
+              global.io.emit('materialStore:changed', { type: 'materialStoreMove', ...data });
+            }
     
             return res.send({
                 message: 'add_storeIn_success',
@@ -357,6 +364,11 @@ module.exports = {
             transactionStroeHistory,
           };
         });
+
+         // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+            if (global.io) {
+              global.io.emit('materialStore:changed', { type: 'materialStoreMove', ...data });
+            }
     
         return res.send({
           message: 'move_storeArea_success',
@@ -483,6 +495,12 @@ module.exports = {
                 addIncomingLoc
               };
             });
+
+             // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+            if (global.io) {
+              global.io.emit('materialStore:changed', { type: 'materialStoreMove', ...results });
+              global.io.emit('materialJob:changed', { type: 'materialIssue', ...results });
+            }
         
             return res.send({
               message: 'success',
@@ -533,6 +551,10 @@ module.exports = {
           };
         })
 
+        // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+       if (global.io) {
+        global.io.emit('materialJob:changed', { type: 'materialIssue', ...results });
+      }
 
         return res.send({
           message: 'success',
@@ -688,6 +710,13 @@ module.exports = {
                   addTransactionStoreHistory
                 };
             })
+
+
+             // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+             if (global.io) {
+              global.io.emit('materialStore:changed', { type: 'materialStoreMove', ...results });
+              global.io.emit('materialJob:changed', { type: 'materialReturn', ...results });
+            }
   
             return res.send({
               message: 'success',
@@ -739,6 +768,11 @@ module.exports = {
                 };
 
             })
+
+             // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+            if (global.io) {
+              global.io.emit('materialJob:changed', { type: 'materialReturn', ...results });
+            }
 
             return res.send({
               message: 'success',
@@ -833,6 +867,11 @@ module.exports = {
             stockOut
           };
         });
+
+         // ✅ ส่งสัญญาณไปให้ทุก client รู้ว่ามีการเปลี่ยนแปลง
+         if (global.io) {
+          global.io.emit('materialStore:changed', { type: 'materialStoreMove', ...data });
+        }
     
         return res.send({
           message: 'out_stock_success',
@@ -905,9 +944,538 @@ module.exports = {
 
 
 
-  
-
+    stockInPbassPreview: async (req, res) => {
+      try {
+        const { startDate, toDate } = req.body;
     
+        if (!startDate || !toDate) {
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+    
+        if (startDate > toDate) {
+          return res.status(400).send({ message: 'invalid_date_range' });
+        }
+    
+        const token = process.env.PBASS_TOKEN_INCOMING;
+        const incomingUrl = process.env.PBASS_API_INCOMING_URL;
+    
+        if (!token || !incomingUrl) {
+          return res.status(500).send({ message: 'missing_pbass_config' });
+        }
+    
+        // const requestUrl = "https://wbp5.bp.minebea.local/api_prod/sv/a32/INCOMING_MAT/*/RECEIVED_YEAR||RECEIVED_MONTH||RECEIVED_DAY BETWEEN '20260401' AND '20260408'";
+        const requestUrl = `${incomingUrl}/*/RECEIVED_YEAR||RECEIVED_MONTH||RECEIVED_DAY BETWEEN '${startDate}' AND '${toDate}'`;
+
+        console.log('PBASS requestUrl =', requestUrl);
+    
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    
+        const response = await fetch(requestUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Accept: '*/*'
+          }
+        });
+    
+        const rawText = await response.text();
+    
+        if (!response.ok) {
+          return res.status(response.status).send({
+            message: 'pbass_preview_fetch_failed',
+            error: rawText,
+            requestUrl
+          });
+        }
+    
+        let rows = [];
+        try {
+          rows = JSON.parse(rawText);
+        } catch (parseError) {
+          return res.status(500).send({
+            message: 'pbass_preview_parse_failed',
+            error: parseError.message,
+            raw: rawText.slice(0, 2000),
+            requestUrl
+          });
+        }
+    
+        const results = Array.isArray(rows)
+          ? rows.map((row, index) => {
+              const yyyy = String(row.RECEIVED_YEAR || '').trim();
+              const mm = String(row.RECEIVED_MONTH || '').trim().padStart(2, '0');
+              const dd = String(row.RECEIVED_DAY || '').trim().padStart(2, '0');
+    
+              return {
+                index: index + 1,
+                jobNo: row.JOB_NO || '',
+                recivedDate: yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '',
+                itemNo: row.ITEM_NO || '',
+                itemName: row.ITEM_NAME || '',
+                itemSpec: row.SPEC || '',
+                lotNo: row.LOT_NO || '',
+                coil: Number(row.COIL || 0),
+                qtyKgsPcs: Number(row.QTY_KGSPCS || 0),
+                supplier: row.VENDOR_CODE || '',
+                unit: row.UNIT || '',
+                invoiceNo: row.INVOICE_NO || '',
+                taxInvoiceNo: row.TAX_INVOICE_NO || '',
+                amount: Number(row.AMOUNT || 0),
+                seq: row.SEQ || '',
+                unloadBy: row.UNLOAD_BY || '',
+                remark: row.REMARK || ''
+              };
+            })
+          : [];
+    
+        return res.send({
+          results,
+          total: results.length,
+          startDate,
+          toDate,
+          requestUrl
+        });
+      } catch (e) {
+        console.error('stockInPbassPreview error:', e);
+        return res.status(500).send({
+          message: 'pbass_preview_fetch_failed',
+          error: e.message,
+          cause: e.cause?.message || null,
+          code: e.cause?.code || null
+        });
+      }
+    },
+
+
+
+    stockInPbassSubmit: async (req, res) => {
+      try {
+        const { startDate, toDate, userId } = req.body;
+    
+        if (!startDate || !toDate || userId == null) {
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+    
+        if (startDate > toDate) {
+          return res.status(400).send({ message: 'invalid_date_range' });
+        }
+    
+        const token = process.env.PBASS_TOKEN_INCOMING;
+        const incomingUrl = process.env.PBASS_API_INCOMING_URL;
+    
+        if (!token || !incomingUrl) {
+          return res.status(500).send({ message: 'missing_pbass_config' });
+        }
+    
+        const requestUrl = `${incomingUrl}/*/RECEIVED_YEAR||RECEIVED_MONTH||RECEIVED_DAY BETWEEN '${startDate}' AND '${toDate}'`;
+    
+        console.log('PBASS requestUrl =', requestUrl);
+    
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    
+        const response = await fetch(requestUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Accept: '*/*'
+          }
+        });
+    
+        const rawText = await response.text();
+    
+        if (!response.ok) {
+          return res.status(response.status).send({
+            message: 'pbass_submit_fetch_failed',
+            error: rawText,
+            requestUrl
+          });
+        }
+    
+        let pbassRows = [];
+        try {
+          pbassRows = JSON.parse(rawText);
+        } catch (parseError) {
+          return res.status(500).send({
+            message: 'pbass_submit_parse_failed',
+            error: parseError.message,
+            raw: rawText.slice(0, 2000),
+            requestUrl
+          });
+        }
+    
+        if (!Array.isArray(pbassRows)) {
+          return res.status(400).send({
+            message: 'pbass_invalid_response',
+            totalFromPbass: 0,
+            successCount: 0,
+            skippedCount: 0,
+            createdRows: [],
+            skippedRows: [],
+            results: []
+          });
+        }
+    
+        const userIdInt = Number(userId);
+    
+        if (!Number.isInteger(userIdInt) || userIdInt <= 0) {
+          return res.status(400).send({ message: 'invalid_userId' });
+        }
+    
+        const toText = (v) => {
+          return v == null ? '' : String(v).trim();
+        };
+    
+        const toInt = (v) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return 0;
+          return parseInt(n);
+        };
+    
+        const toNumberText = (v) => {
+          if (v == null || v === '') return '';
+          return String(v);
+        };
+    
+        const formatYearMonth = (row) => {
+          const yyyy = toText(row.RECEIVED_YEAR);
+          const mm = toText(row.RECEIVED_MONTH).padStart(2, '0');
+          return yyyy && mm ? `${yyyy}-${mm}` : '';
+        };
+    
+        const formatReceivedDate = (row) => {
+          const yyyy = toText(row.RECEIVED_YEAR);
+          const mm = toText(row.RECEIVED_MONTH).padStart(2, '0');
+          const dd = toText(row.RECEIVED_DAY).padStart(2, '0');
+    
+          return yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '';
+        };
+    
+        const toPreviewRow = (row, index, reason = '') => {
+          return {
+            index: index + 1,
+            jobNo: toText(row.JOB_NO),
+            recivedDate: formatReceivedDate(row),
+            itemNo: toText(row.ITEM_NO),
+            itemName: toText(row.ITEM_NAME),
+            itemSpec: toText(row.SPEC),
+            lotNo: toText(row.LOT_NO),
+            coil: Number(row.COIL || 0),
+            qtyKgsPcs: Number(row.QTY_KGSPCS || 0),
+            supplier: toText(row.VENDOR_CODE),
+            unit: toText(row.UNIT),
+            invoiceNo: toText(row.INVOICE_NO),
+            taxInvoiceNo: toText(row.TAX_INVOICE_NO),
+            amount: Number(row.AMOUNT || 0),
+            seq: toText(row.SEQ),
+            unloadBy: toText(row.UNLOAD_BY),
+            remark: toText(row.REMARK),
+            reason
+          };
+        };
+    
+        const skippedRows = [];
+        const validRows = [];
+    
+        const seenJobNoInBatch = new Set();
+        const materialCache = new Map();
+    
+        // =============================
+        // 1) Validate / classify rows
+        // =============================
+        for (let i = 0; i < pbassRows.length; i++) {
+          const row = pbassRows[i];
+    
+          const jobNo = toText(row.JOB_NO);
+          const materialNo = toText(row.ITEM_NO);
+    
+          if (!jobNo) {
+            skippedRows.push(toPreviewRow(row, i, 'missing_jobNo'));
+            continue;
+          }
+    
+          if (!materialNo) {
+            skippedRows.push(toPreviewRow(row, i, 'missing_materialNo'));
+            continue;
+          }
+    
+          if (seenJobNoInBatch.has(jobNo)) {
+            skippedRows.push(toPreviewRow(row, i, 'duplicate_jobNo_in_pbass_batch'));
+            continue;
+          }
+    
+          seenJobNoInBatch.add(jobNo);
+    
+          const checkIncoming = await prisma.incoming.findFirst({
+            where: {
+              jobNo: jobNo,
+              status: 'use',
+              StockOut: {
+                none: {
+                  status: 'use'
+                }
+              }
+            },
+            orderBy: {
+              id: 'desc'
+            },
+            select: {
+              id: true,
+              jobNo: true
+            }
+          });
+    
+          if (checkIncoming) {
+            skippedRows.push(toPreviewRow(row, i, 'incoming_already'));
+            continue;
+          }
+    
+          let material = materialCache.get(materialNo);
+    
+          if (material === undefined) {
+            material = await prisma.material.findFirst({
+              where: {
+                materialNo: materialNo,
+                status: 'use'
+              },
+              select: {
+                id: true,
+                materialNo: true,
+                materialName: true,
+                materialSpec: true,
+                accountCode: true
+              }
+            });
+    
+            materialCache.set(materialNo, material || null);
+          }
+    
+          if (!material) {
+            skippedRows.push(toPreviewRow(row, i, 'not_found_this_Material_in_Master'));
+            continue;
+          }
+    
+          validRows.push({
+            index: i,
+            row,
+            material,
+            targetStoreId: material.accountCode === '4520' ? 47 : 48
+          });
+        }
+    
+        const createdRows = [];
+        const results = [];
+    
+        // =============================
+        // 2) Create data
+        //    ใช้ 1 transaction ต่อ 1 incoming
+        // =============================
+        for (const item of validRows) {
+          const row = item.row;
+          const material = item.material;
+          const targetStoreId = Number(item.targetStoreId);
+    
+          const coilInt = toInt(row.COIL);
+          const qtyInt = toInt(row.QTY_KGSPCS);
+    
+          try {
+            const createdResult = await prisma.$transaction(async (tx) => {
+              // กัน race condition อีกรอบ เผื่อมีคน sync พร้อมกัน
+              const duplicatedIncoming = await tx.incoming.findFirst({
+                where: {
+                  jobNo: toText(row.JOB_NO),
+                  status: 'use',
+                  StockOut: {
+                    none: {
+                      status: 'use'
+                    }
+                  }
+                },
+                orderBy: {
+                  id: 'desc'
+                },
+                select: {
+                  id: true,
+                  jobNo: true
+                }
+              });
+    
+              if (duplicatedIncoming) {
+                throw new Error('incoming_already');
+              }
+    
+              const incoming = await tx.incoming.create({
+                data: {
+                  jobNo: toText(row.JOB_NO),
+                  yearMonth: formatYearMonth(row),
+                  recivedDate: formatReceivedDate(row),
+                  inspector: toText(row.INPUT_OPERATOR),
+                  unloadBy: toText(row.UNLOAD_BY),
+                  invoiceOne: toText(row.INVOICE_NO),
+                  taxLnvNo: toText(row.TAX_INVOICE_NO),
+                  materialNo: toText(row.ITEM_NO),
+                  unitPrice: toNumberText(row.UNIT_PRICE),
+                  qtyOfPalletPack: toNumberText(row.QTY_OF_PALLET),
+                  coil: coilInt,
+                  qtyKgsPcs: qtyInt,
+                  unit: toText(row.UNIT),
+                  kgsCoil: toNumberText(row.KGSCOIL),
+                  odCoil: toText(row.OD_COIL_MM),
+                  remark: toText(row.REMARK),
+                  millSheet: toText(row.MILL_SHEET),
+                  itemName: toText(row.ITEM_NAME),
+                  itemSpec: toText(row.SPEC),
+                  lotNo: toText(row.LOT_NO),
+                  packing: toText(row.PACKING),
+                  rosh: toText(row.ROHS),
+                  result: toText(row.RESULT),
+                  supplier: toText(row.VENDOR_CODE),
+                  amount: toNumberText(row.AMOUNT)
+                },
+                select: {
+                  id: true,
+                  jobNo: true,
+                  materialNo: true,
+                  itemName: true,
+                  itemSpec: true,
+                  coil: true,
+                  qtyKgsPcs: true,
+                  unit: true
+                }
+              });
+    
+              const transactionStroe = await tx.transactionStore.create({
+                data: {
+                  storeId: targetStoreId,
+                  incomingId: Number(incoming.id),
+                  userId: userIdInt,
+                  stockNote: ''
+                },
+                select: {
+                  id: true,
+                  storeId: true,
+                  incomingId: true,
+                  userId: true,
+                  stockNote: true,
+                  status: true
+                }
+              });
+    
+              const transactionStroeHistory = await tx.transactionStoreHistory.create({
+                data: {
+                  storeId: targetStoreId,
+                  incomingId: Number(incoming.id),
+                  userId: userIdInt,
+                  stockNote: '',
+                  type: 'StockIn',
+                  coil: coilInt,
+                  qty: qtyInt
+                },
+                select: {
+                  id: true,
+                  storeId: true,
+                  incomingId: true,
+                  userId: true,
+                  type: true,
+                  coil: true,
+                  qty: true,
+                  status: true
+                }
+              });
+    
+              return {
+                incoming,
+                transactionStroe,
+                transactionStroeHistory
+              };
+            }, {
+              maxWait: 10000,
+              timeout: 20000
+            });
+    
+            const preview = toPreviewRow(row, item.index, '');
+    
+            const createdItem = {
+              ...preview,
+              incomingId: createdResult.incoming.id,
+              storeId: targetStoreId,
+              accountCode: material.accountCode || '',
+              reason: 'success'
+            };
+    
+            createdRows.push(createdItem);
+    
+            results.push({
+              ...createdResult,
+              preview: createdItem
+            });
+    
+          } catch (rowError) {
+            console.error('PBASS create row failed:', {
+              jobNo: toText(row.JOB_NO),
+              itemNo: toText(row.ITEM_NO),
+              error: rowError.message
+            });
+    
+            const reason =
+              rowError.message === 'incoming_already'
+                ? 'incoming_already'
+                : `create_failed: ${rowError.message}`;
+    
+            skippedRows.push(toPreviewRow(row, item.index, reason));
+          }
+        }
+    
+        // =============================
+        // 3) Add sync timestamp
+        // =============================
+        let syncStockIn = null;
+    
+        if (createdRows.length > 0) {
+          syncStockIn = await prisma.syncTimeStmp.create({
+            data: {
+              remark: 'SyncStockIn'
+            },
+            select: {
+              id: true,
+              status: true
+            }
+          });
+        }
+    
+        // =============================
+        // 4) Socket emit
+        // =============================
+        if (global.io && createdRows.length > 0) {
+          global.io.emit('materialStore:changed', {
+            type: 'materialStoreMove',
+            source: 'PBASS_SYNC',
+            successCount: createdRows.length
+          });
+        }
+    
+        return res.send({
+          message: 'pbass_stockIn_submit_success',
+          totalFromPbass: pbassRows.length,
+          validCount: validRows.length,
+          successCount: createdRows.length,
+          skippedCount: skippedRows.length,
+          createdRows,
+          skippedRows,
+          results,
+          syncStockIn
+        });
+    
+      } catch (e) {
+        console.error('stockInPbassSubmit error:', e);
+    
+        return res.status(500).send({
+          message: 'pbass_submit_failed',
+          error: e.message
+        });
+      }
+    },
 
 
 
