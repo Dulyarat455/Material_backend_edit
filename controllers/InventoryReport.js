@@ -44,6 +44,7 @@ module.exports = {
                   select: {
                     id: true,
                     jobNo: true,
+                    recivedDate: true,
                     materialNo: true,
                     itemName: true,
                     itemSpec: true,
@@ -51,7 +52,7 @@ module.exports = {
                     coil: true,
                     qtyKgsPcs: true,
                     unit: true,
-                    unitPrice: true
+                    unitPrice: true 
                   }
                 },
                 Store: {
@@ -71,6 +72,7 @@ module.exports = {
                 transactionStoreId: row.id,
                 incomingId: row.incomingId,
                 jobNo: row.Incoming?.jobNo || '',
+                recivedDate: row.Incoming?.recivedDate || '',
                 materialNo: row.Incoming?.materialNo || '',
                 itemName: row.Incoming?.itemName || '',
                 itemSpec: row.Incoming?.itemSpec || '',
@@ -78,6 +80,7 @@ module.exports = {
                 coil: Number(row.Incoming?.coil || 0),
                 qtyKgsPcs: qtyKgsPcs,
                 unit: row.Incoming?.unit || '',
+                unitPrice: unitPrice,
                 totalPrice: qtyKgsPcs * unitPrice,
                 area: row.Store?.name || '',
                 stockNote: row.stockNote || '',
@@ -104,6 +107,7 @@ module.exports = {
           const {
             startDate,
             endDate,
+            recivedDate,
             jobNo,
             materialNo,
             itemName,
@@ -132,6 +136,7 @@ module.exports = {
               is: {
                 status: 'use',
                 ...(jobNo && jobNo !== 'all' ? { jobNo } : {}),
+                ...(recivedDate && recivedDate !== 'all' ? { recivedDate } : {}),
                 ...(materialNo && materialNo !== 'all' ? { materialNo } : {}),
                 ...(itemName && itemName !== 'all' ? { itemName } : {}),
                 ...(spec && spec !== 'all' ? { itemSpec: spec } : {}),
@@ -169,6 +174,7 @@ module.exports = {
     
           worksheet.columns = [
             { header: 'Job No', key: 'jobNo', width: 20 },
+            { header: 'Received Date', key: 'recivedDate', width: 18 },
             { header: 'Material No', key: 'materialNo', width: 22 },
             { header: 'Item Name', key: 'itemName', width: 28 },
             { header: 'Spec', key: 'itemSpec', width: 22 },
@@ -176,6 +182,7 @@ module.exports = {
             { header: 'Coil', key: 'coil', width: 12 },
             { header: 'Qty Kgs/Pcs', key: 'qtyKgsPcs', width: 16 },
             { header: 'Unit', key: 'unit', width: 10 },
+            { header: 'Unit Price', key: 'unitPrice', width: 16 },
             { header: 'Total Price', key: 'totalPrice', width: 16 },
             { header: 'Area', key: 'area', width: 14 },
             { header: 'Stock Note', key: 'stockNote', width: 28 },
@@ -232,6 +239,7 @@ module.exports = {
                   select: {
                     id: true,
                     jobNo: true,
+                    recivedDate: true,
                     materialNo: true,
                     itemName: true,
                     itemSpec: true,
@@ -258,6 +266,7 @@ module.exports = {
     
               const excelRow = worksheet.addRow({
                 jobNo: row.Incoming?.jobNo || '',
+                recivedDate: row.Incoming?.recivedDate || '',
                 materialNo: row.Incoming?.materialNo || '',
                 itemName: row.Incoming?.itemName || '',
                 itemSpec: row.Incoming?.itemSpec || '',
@@ -265,6 +274,7 @@ module.exports = {
                 coil: Number(row.Incoming?.coil || 0),
                 qtyKgsPcs: qtyKgsPcs,
                 unit: row.Incoming?.unit || '',
+                unitPrice: unitPrice,
                 totalPrice: totalPrice,
                 area: row.Store?.name || '',
                 stockNote: row.stockNote || '',
@@ -302,9 +312,9 @@ module.exports = {
                 cell.alignment = {
                   vertical: 'middle',
                   horizontal:
-                    colNumber === 6
+                    colNumber === 7
                       ? 'center'
-                      : colNumber === 7 || colNumber === 9
+                      : colNumber === 8 || colNumber === 10 || colNumber === 11
                       ? 'right'
                       : 'left',
                   wrapText: true
@@ -312,8 +322,8 @@ module.exports = {
     
                 cell.font = {
                   size: 12,
-                  bold: colNumber === 1 || colNumber === 2 || colNumber === 9,
-                  color: { argb: colNumber === 1 || colNumber === 2 || colNumber === 9 ? 'FF0F172A' : 'FF334155' }
+                  bold: colNumber === 1 || colNumber === 3 || colNumber === 10 || colNumber === 11,
+                  color: { argb: colNumber === 1 || colNumber === 2 || colNumber === 10 || colNumber === 11 ? 'FF0F172A' : 'FF334155' }
                 };
               });
     
@@ -323,7 +333,7 @@ module.exports = {
     
           worksheet.autoFilter = {
             from: 'A1',
-            to: 'L1'
+            to: 'N1'
           };
     
           res.setHeader(

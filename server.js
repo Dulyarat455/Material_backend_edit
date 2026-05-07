@@ -127,6 +127,10 @@ app.post('/api/material/create',(req, res) => materialController.add(req,res))
 app.get('/api/material/filterByMaterialNo',(req, res) => materialController.filterByMaterialNo(req,res))
 app.get('/api/material/list',(req, res) => materialController.list(req,res))
 app.get('/api/material/getMaterialByPbass',(req, res) => materialController.getMaterialByPbass(req,res))
+app.post('/api/material/delete',(req, res) => materialController.delete(req,res))
+app.post('/api/material/exportExcel',(req, res) => materialController.exportExcel(req,res))
+
+
 
 
 //McController

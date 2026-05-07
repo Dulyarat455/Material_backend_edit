@@ -1,13 +1,14 @@
 const {PrismaClient} = require('../generated/prisma');
 const prisma = new PrismaClient();
 
+const ExcelJS = require('exceljs');
 
 module.exports = {
     add: async (req,res) =>{
         try{
-            const { materialNo, materialName, materialSpec } = req.body;
+            const { materialNo, materialName, materialSpec, accountCode } = req.body;
          
-            if (materialNo == null, materialName == null , materialSpec == null) {
+            if  (!materialNo || !materialName || !materialSpec || !accountCode) {
               return res.status(400).send({ message: 'missing_required_fields' });
             }
 
@@ -16,6 +17,7 @@ module.exports = {
                   materialNo: materialNo ,
                   materialName: materialName,
                   materialSpec: materialSpec,
+                  accountCode: accountCode,
                   status: 'use',
                 },
               });
@@ -28,13 +30,15 @@ module.exports = {
                 data: {
                   materialNo: materialNo,
                   materialName: materialName,
-                  materialSpec: materialSpec 
+                  materialSpec: materialSpec,
+                  accountCode: accountCode, 
                 },
                 select: {
                   id: true,
                   materialNo: true,
                   materialName: true,
                   materialSpec: true,
+                  accountCode: true,
                 },
               });
 
@@ -291,10 +295,288 @@ module.exports = {
       }
     },
 
-    
-    importExcel : async (req,res) =>{
-        
+    delete: async (req,res) =>{
+      try{
+          const {materialId} = req.body ;
 
-    }
+          if  (materialId == null) {
+            return res.status(400).send({ message: 'missing_required_fields' });
+          }
+
+          
+          const checkMaterial = await prisma.material.findFirst({
+            where: {
+              id: parseInt(materialId)  ,
+              status: 'use',
+            },
+          });
+
+          if (!checkMaterial) {
+            return res.status(400).send({ message: 'Material_not_found' });
+          }
+
+
+          await prisma.material.update({
+            where: { id: parseInt(materialId), status: 'use' },
+            data: { status: 'delete' }
+          });
+
+          return res.send({
+            message: 'delete_materialMaster_success'
+          });
+
+      } catch(e){
+        return res.status(500).send({ error: e.message });
+      }     
+
+    },
+
+    
+    exportExcel: async (req, res) => {
+      try {
+        const chunkSize = 500;
+    
+        const {
+          searchText,
+          fromDate,
+          toDate
+        } = req.body || {};
+    
+        const keyword = String(searchText || '').trim();
+    
+        const where = {
+          status: 'use',
+    
+          ...(fromDate || toDate
+            ? {
+                timeStamp: {
+                  ...(fromDate
+                    ? { gte: new Date(`${fromDate}T00:00:00`) }
+                    : {}),
+                  ...(toDate
+                    ? { lte: new Date(`${toDate}T23:59:59.999`) }
+                    : {})
+                }
+              }
+            : {}),
+    
+          ...(keyword
+            ? {
+                OR: [
+                  { materialNo: { contains: keyword } },
+                  { materialName: { contains: keyword } },
+                  { materialSpec: { contains: keyword } },
+                  { accountCode: { contains: keyword } },
+                ],
+              }
+            : {}),
+        };
+    
+        // =============================
+        // 1) ดึง id ตาม filter ก่อน
+        // =============================
+        const idRows = await prisma.material.findMany({
+          where,
+          orderBy: {
+            id: 'desc',
+          },
+          select: {
+            id: true,
+          },
+        });
+    
+        const allIds = idRows.map(x => x.id);
+    
+        const workbook = new ExcelJS.Workbook();
+    
+        workbook.creator = 'Material Control System';
+        workbook.created = new Date();
+    
+        const worksheet = workbook.addWorksheet('Material Master', {
+          views: [{ state: 'frozen', ySplit: 1 }],
+        });
+    
+        worksheet.columns = [
+          { header: 'Index', key: 'index', width: 10 },
+          { header: 'Material No', key: 'materialNo', width: 26 },
+          { header: 'Material Name', key: 'materialName', width: 34 },
+          { header: 'Spec', key: 'materialSpec', width: 26 },
+          { header: 'Account Code', key: 'accountCode', width: 18 },
+          { header: 'Type', key: 'type', width: 16 },
+          { header: 'Created At', key: 'createdAt', width: 24 },
+        ];
+    
+        const headerRow = worksheet.getRow(1);
+        headerRow.height = 24;
+    
+        headerRow.eachCell((cell) => {
+          cell.font = {
+            bold: true,
+            color: { argb: 'FFFFFFFF' },
+            size: 11,
+          };
+    
+          cell.alignment = {
+            vertical: 'middle',
+            horizontal: 'center',
+            wrapText: true,
+          };
+    
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF5B8FC9' },
+          };
+    
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF4A7DB7' } },
+            left: { style: 'thin', color: { argb: 'FFE5EEF7' } },
+            bottom: { style: 'thin', color: { argb: 'FF4A7DB7' } },
+            right: { style: 'thin', color: { argb: 'FFE5EEF7' } },
+          };
+        });
+    
+        let excelRowIndex = 2;
+        let runningIndex = 1;
+    
+        // =============================
+        // 2) Query data ทีละ 500
+        // =============================
+        for (let i = 0; i < allIds.length; i += chunkSize) {
+          const chunkIds = allIds.slice(i, i + chunkSize);
+    
+          const rows = await prisma.material.findMany({
+            where: {
+              id: {
+                in: chunkIds
+              },
+              ...where
+            },
+            orderBy: {
+              id: 'desc',
+            },
+            select: {
+              id: true,
+              materialNo: true,
+              materialName: true,
+              materialSpec: true,
+              accountCode: true,
+              timeStamp: true,
+              status: true,
+            },
+          });
+    
+          for (const row of rows) {
+            const accountCode = row.accountCode || '';
+            const type = accountCode === '4520' ? 'Material' : 'Chemical';
+    
+            const excelRow = worksheet.addRow({
+              index: runningIndex,
+              materialNo: row.materialNo || '',
+              materialName: row.materialName || '',
+              materialSpec: row.materialSpec || '',
+              accountCode,
+              type,
+              createdAt: row.timeStamp
+                ? new Date(row.timeStamp).toLocaleString('th-TH', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '',
+            });
+    
+            const isBlueRow = excelRowIndex % 2 === 0;
+            const bgColor = isBlueRow ? 'FFDBE7F3' : 'FFFFFFFF';
+    
+            excelRow.height = 24;
+    
+            excelRow.eachCell((cell, colNumber) => {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: bgColor },
+              };
+    
+              cell.border = {
+                top: { style: 'thin', color: { argb: 'FFB8C9DC' } },
+                left: { style: 'thin', color: { argb: 'FFB8C9DC' } },
+                bottom: { style: 'thin', color: { argb: 'FFB8C9DC' } },
+                right: { style: 'thin', color: { argb: 'FFB8C9DC' } },
+              };
+    
+              cell.alignment = {
+                vertical: 'middle',
+                horizontal: colNumber === 1 ? 'center' : 'left',
+                wrapText: true,
+              };
+    
+              cell.font = {
+                size: 12,
+                bold: colNumber === 2 || colNumber === 5 || colNumber === 6,
+                color: {
+                  argb:
+                    colNumber === 2 || colNumber === 5 || colNumber === 6
+                      ? 'FF0F172A'
+                      : 'FF334155',
+                },
+              };
+    
+              // Type column color
+              if (colNumber === 6) {
+                if (type === 'Material') {
+                  cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFFFF7ED' },
+                  };
+                  cell.font = {
+                    size: 12,
+                    bold: true,
+                    color: { argb: 'FFB45309' },
+                  };
+                } else {
+                  cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFEFF6FF' },
+                  };
+                  cell.font = {
+                    size: 12,
+                    bold: true,
+                    color: { argb: 'FF1D4ED8' },
+                  };
+                }
+              }
+            });
+    
+            excelRowIndex++;
+            runningIndex++;
+          }
+        }
+    
+        worksheet.autoFilter = {
+          from: 'A1',
+          to: 'G1',
+        };
+    
+        res.setHeader(
+          'Content-Type',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+    
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename=material_master_${Date.now()}.xlsx`
+        );
+    
+        await workbook.xlsx.write(res);
+        return res.end();
+      } catch (e) {
+        return res.status(500).send({ error: e.message });
+      }
+    },
 
 }
