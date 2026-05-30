@@ -31,15 +31,26 @@ module.exports = {
             }
 
 
+              // const checkIncoming = await prisma.incoming.findFirst({
+              //   where: {
+              //     jobNo: jobNo,
+              //     status: 'use',
+              //     StockOut: {
+              //       none: {
+              //         status: 'use'
+              //       }
+              //     }
+              //   },
+              //   orderBy: {
+              //     id: 'desc'
+              //   }
+              // });
+
+
               const checkIncoming = await prisma.incoming.findFirst({
                 where: {
                   jobNo: jobNo,
                   status: 'use',
-                  StockOut: {
-                    none: {
-                      status: 'use'
-                    }
-                  }
                 },
                 orderBy: {
                   id: 'desc'
@@ -298,6 +309,11 @@ module.exports = {
           where: {
             id: parseInt(incomingId),
             status: 'use',
+            StockOut: {
+              none: {
+                status: 'use'
+              }
+            }
           },
         });
     
@@ -435,6 +451,11 @@ module.exports = {
                 throw new Error('this_job_notFound');
               }
 
+              // ✅ กัน case job นี้ถูก Incharge / Complete ไปแล้ว
+              if (checkJob.IncomingId !== null) {
+                throw new Error('job_already_incharged');
+              }
+
         
               const checkTransactionStore = await tx.transactionStore.findFirst({
                 where: {
@@ -450,7 +471,12 @@ module.exports = {
               const checkIncoming =  await tx.incoming.findFirst({
                   where:{
                       id: incomingIdInt,
-                      status: 'use'
+                      status: 'use',
+                      StockOut: {
+                        none: {
+                          status: 'use'
+                        }
+                      }
                   }
               })       
 
@@ -534,6 +560,13 @@ module.exports = {
             throw new Error('this_job_notFound');
           }
 
+
+          // ✅ กัน case job นี้ถูก Incharge / Complete ไปแล้ว
+          if (checkJob.IncomingId !== null) {
+            throw new Error('job_already_incharged');
+          }
+
+
           const inventoryUpdate = await tx.job.update({
             where: {
               id: jobIdInt,
@@ -567,7 +600,8 @@ module.exports = {
         if (
           e.message === 'this_job_notFound' ||
           e.message === 'transaction_store_notFound' ||
-          e.message ===  'incoming_notFound'
+          e.message ===  'incoming_notFound' ||
+          e.message === 'job_already_incharged'
         ) {
           return res.status(400).send({ message: e.message });
         }
@@ -628,6 +662,11 @@ module.exports = {
           
                 if (!checkJob) {
                   throw new Error('this_job_notFound');
+                }
+
+                // ✅ กัน case Job นี้ถูก Incharge / Complete ไปแล้ว
+                if (checkJob.IncomingId != null) {
+                  throw new Error('job_already_incharged');
                 }
   
   
@@ -749,6 +788,11 @@ module.exports = {
                   throw new Error('this_job_notFound');
                 }
 
+                // ✅ กัน case Job นี้ถูก Incharge / Complete ไปแล้ว
+                if (checkJob.IncomingId != null) {
+                  throw new Error('job_already_incharged');
+                }
+
 
 
                 const inventoryUpdate = await tx.job.update({
@@ -785,7 +829,8 @@ module.exports = {
         if (
           e.message === 'this_job_notFound' ||
           e.message === 'canNot_returnStockIn_have_material_inStock' ||
-          e.message ===  'incoming_notFound_inSystem'
+          e.message ===  'incoming_notFound_inSystem' ||
+          e.message === 'job_already_incharged'
         ) {
           return res.status(400).send({ message: e.message });
         }
@@ -1311,15 +1356,30 @@ module.exports = {
     
           seenJobNoInBatch.add(jobNo);
     
+          // const checkIncoming = await prisma.incoming.findFirst({
+          //   where: {
+          //     jobNo: jobNo,
+          //     status: 'use',
+          //     StockOut: {
+          //       none: {
+          //         status: 'use'
+          //       }
+          //     }
+          //   },
+          //   orderBy: {
+          //     id: 'desc'
+          //   },
+          //   select: {
+          //     id: true,
+          //     jobNo: true
+          //   }
+          // });
+
+
           const checkIncoming = await prisma.incoming.findFirst({
             where: {
               jobNo: jobNo,
               status: 'use',
-              StockOut: {
-                none: {
-                  status: 'use'
-                }
-              }
             },
             orderBy: {
               id: 'desc'

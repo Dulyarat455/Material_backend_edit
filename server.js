@@ -18,8 +18,8 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   //'http://10.121.49.215:4200', // 👈 ใส่ IP เครื่อง Server notebook
-  'http://10.121.1.85'// เครื่อง server จริง
+   'http://10.121.51.15:4200', // 👈 ใส่ IP เครื่อง Server notebook
+  //'http://10.121.1.85'// เครื่อง server จริง
 
 ];
 
@@ -58,7 +58,7 @@ const server = http.createServer(app);
 
 const { Server } = require('socket.io');
 const io = new Server(server, {
-  path: '/materialPressAPI/socket.io',
+  //path: '/materialPressAPI/socket.io',
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST'],
@@ -202,13 +202,13 @@ app.post('/api/transactionAll/exportExcel',(req, res) => transactionAllControlle
 
 
 
-server.listen(3007, ()=>{
-    console.log("API Server Running...");
-})
+// server.listen(3007, ()=>{
+//     console.log("API Server Running...");
+// })
 
 
 
-// app.listen(3001);
-// server.listen(3001,'0.0.0.0', () => {
-//    console.log('API + WebSocket listening on port 3001');
-// });
+app.listen(3001);
+server.listen(3001,'0.0.0.0', () => {
+   console.log('API + WebSocket listening on port 3001');
+});

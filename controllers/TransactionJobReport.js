@@ -18,7 +18,7 @@ module.exports = {
           }
         },
         orderBy: {
-          id: 'desc'
+          inchargeTime: 'desc'
         },
         select: {
           id: true
@@ -42,7 +42,7 @@ module.exports = {
             }
           },
           orderBy: {
-            id: 'desc'
+            inchargeTime: 'desc'
           },
           include: {
             Area: {
@@ -168,6 +168,7 @@ module.exports = {
             requestTime: row.requestTime,
             inchargeTime: row.inchargeTime,
             state: row.state || '',
+            
 
             // Area
             area: row.Area?.name || '',
@@ -297,7 +298,7 @@ module.exports = {
       const idRows = await prisma.job.findMany({
         where,
         orderBy: {
-          id: 'desc'
+          inchargeTime: 'desc'
         },
         select: {
           id: true
@@ -384,7 +385,7 @@ module.exports = {
             ...where
           },
           orderBy: {
-            id: 'desc'
+            inchargeTime: 'desc'
           },
           include: {
             Area: {
