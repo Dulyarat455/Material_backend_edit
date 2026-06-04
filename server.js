@@ -18,7 +18,7 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   'http://10.121.51.15:4200', // 👈 ใส่ IP เครื่อง Server notebook
+   'http://10.121.50.19:4200', // 👈 ใส่ IP เครื่อง Server notebook
   //'http://10.121.1.85'// เครื่อง server จริง
 
 ];
@@ -171,7 +171,8 @@ app.post('/api/return/delete',(req, res) => returnController.delete(req,res))
 app.get('/api/inventory/list',(req, res) => inventoryReportController.list(req,res))
 app.post('/api/inventory/exportExcel',(req, res) => inventoryReportController.exportExcel(req,res))
 app.post('/api/inventory/editStockNote',(req, res) => inventoryReportController.editStockNote(req,res))
-
+app.post('/api/inventory/editCoil',(req,res) => inventoryReportController.editCoil(req,res))
+app.post('/api/inventory/editQty',(req,res) => inventoryReportController.editQty(req,res))
 
 
 //StockOutReport

@@ -530,6 +530,13 @@ module.exports = {
               qty: latestHistory.qty
             }
           });
+
+          if (global.io) {
+            global.io.emit('materialStore:changed', {
+              type: 'materialStoreMove',
+              createdHistory
+            });
+          }
       
           return res.send({
             message: 'success',
@@ -543,15 +550,203 @@ module.exports = {
         }
       },
 
-      editCoilQty: async (req,res) => {
-        try{
-            const {userId, coil, qty } = req.body;
-            
-        }catch(e){
+
+      editCoil: async (req, res) => {
+        try {
+          const { userId, incomingId, coil } = req.body;
+      
+          if (userId == null || incomingId == null || coil == null) {
+            return res.status(400).send({ message: 'missing_required_fields' });
+          }
+      
+          const incomingIdInt = parseInt(incomingId);
+          const userIdInt = parseInt(userId);
+          const coilInt = parseInt(coil);
+      
+          if (
+            Number.isNaN(incomingIdInt) ||
+            Number.isNaN(userIdInt) ||
+            Number.isNaN(coilInt)
+          ) {
+            return res.status(400).send({ message: 'invalid_numeric_fields' });
+          }
+      
+          const results = await prisma.$transaction(async (tx) => {
+            const checkIncoming = await tx.incoming.findFirst({
+              where: {
+                id: incomingIdInt,
+                status: 'use'
+              }
+            });
+      
+            if (!checkIncoming) {
+              throw new Error('incoming_not_found');
+            }
+      
+            const latestTransactionStore = await tx.transactionStore.findFirst({
+              where: {
+                incomingId: incomingIdInt,
+                status: 'use'
+              },
+              orderBy: [
+                { timeStmp: 'desc' },
+                { id: 'desc' }
+              ]
+            });
+      
+            if (!latestTransactionStore) {
+              throw new Error('transaction_store_not_found');
+            }
+      
+            const updateIncoming = await tx.incoming.update({
+              where: {
+                id: incomingIdInt
+              },
+              data: {
+                coil: coilInt
+              }
+            });
+      
+            const createdHistory = await tx.transactionStoreHistory.create({
+              data: {
+                storeId: latestTransactionStore.storeId,
+                incomingId: latestTransactionStore.incomingId,
+                userId: userIdInt,
+                stockNote: latestTransactionStore.stockNote || '',
+                type: 'EditCoil',
+                coil: coilInt,
+                qty: parseInt(checkIncoming.qtyKgsPcs)
+              }
+            });
+      
+            return {
+              transactionStoreId: latestTransactionStore.id,
+              updateIncoming,
+              createdHistory
+            };
+          });
+      
+          if (global.io) {
+            global.io.emit('materialStore:changed', {
+              type: 'materialStoreMove',
+              ...results
+            });
+          }
+      
+          return res.send({
+            message: 'success',
+            results
+          });
+        } catch (e) {
+          if (
+            e.message === 'incoming_not_found' ||
+            e.message === 'transaction_store_not_found'
+          ) {
+            return res.status(400).send({ message: e.message });
+          }
+      
           return res.status(500).send({ error: e.message });
-          
         }
-      }
+      },
+
+
+     editQty: async (req, res) => {
+          try {
+            const { userId, incomingId, qty } = req.body;
+
+            if (userId == null || incomingId == null || qty == null) {
+              return res.status(400).send({ message: 'missing_required_fields' });
+            }
+
+            const incomingIdInt = parseInt(incomingId);
+            const userIdInt = parseInt(userId);
+            const qtyInt = parseInt(qty);
+
+            if (
+              Number.isNaN(incomingIdInt) ||
+              Number.isNaN(userIdInt) ||
+              Number.isNaN(qtyInt)
+            ) {
+              return res.status(400).send({ message: 'invalid_numeric_fields' });
+            }
+
+            const results = await prisma.$transaction(async (tx) => {
+              const checkIncoming = await tx.incoming.findFirst({
+                where: {
+                  id: incomingIdInt,
+                  status: 'use'
+                }
+              });
+
+              if (!checkIncoming) {
+                throw new Error('incoming_not_found');
+              }
+
+              const latestTransactionStore = await tx.transactionStore.findFirst({
+                where: {
+                  incomingId: incomingIdInt,
+                  status: 'use'
+                },
+                orderBy: [
+                  { timeStmp: 'desc' },
+                  { id: 'desc' }
+                ]
+              });
+
+              if (!latestTransactionStore) {
+                throw new Error('transaction_store_not_found');
+              }
+
+              const updateIncoming = await tx.incoming.update({
+                where: {
+                  id: incomingIdInt
+                },
+                data: {
+                  qtyKgsPcs: qtyInt
+                }
+              });
+
+              const createdHistory = await tx.transactionStoreHistory.create({
+                data: {
+                  storeId: latestTransactionStore.storeId,
+                  incomingId: latestTransactionStore.incomingId,
+                  userId: userIdInt,
+                  stockNote: latestTransactionStore.stockNote || '',
+                  type: 'EditQty',
+                  coil: parseInt(checkIncoming.coil),
+                  qty: qtyInt
+                }
+              });
+
+              return {
+                transactionStoreId: latestTransactionStore.id,
+                updateIncoming,
+                createdHistory
+              };
+            });
+
+            if (global.io) {
+              global.io.emit('materialStore:changed', {
+                type: 'materialStoreMove',
+                ...results
+              });
+            }
+
+            return res.send({
+              message: 'success',
+              results
+            });
+          } catch (e) {
+            if (
+              e.message === 'incoming_not_found' ||
+              e.message === 'transaction_store_not_found'
+            ) {
+              return res.status(400).send({ message: e.message });
+            }
+
+            return res.status(500).send({ error: e.message });
+          }
+    }
 
 
 
