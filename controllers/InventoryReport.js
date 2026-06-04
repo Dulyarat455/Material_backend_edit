@@ -157,32 +157,11 @@ module.exports = {
               : {})
           };
       
-          // =============================
-          // AREA SORT PRIORITY
-          // =============================
-          const areaSortPriority = [
-            'Pending',
-            '1101', '1102', '1103', '1104', '1105', '1106', '1107',
-            '1108', '1109', '1110', '1111',
-            '1201', '1202', '1203', '1204',
-            '1205', '1206', '1207', '1208', '1209', '1210', '1211',
-            '2101', '2102', '2103', '2104', '2105', '2106',
-            '2201', '2202', '2203', '2204', '2205', '2206',
-            '3101', '3102', '3103', '3104', '3105', '3106',
-            '3201', '3202', '3203', '3204', '3205', '3206',
-            'Chemical'
-          ];
+         
+
+
       
-          const getAreaSortIndex = (areaName) => {
-            const key = String(areaName || '').trim().toLowerCase();
-      
-            const index = areaSortPriority.findIndex(x =>
-              String(x || '').trim().toLowerCase() === key
-            );
-      
-            // AREA ที่ไม่อยู่ใน pattern ให้ไปท้ายสุด หลัง Chemical
-            return index >= 0 ? index : 999999;
-          };
+         
       
           const getTimeSortValue = (value) => {
             if (!value) return 0;
@@ -193,18 +172,38 @@ module.exports = {
             return d.getTime();
           };
       
-          const sortInventoryRows = (rows) => {
-            return [...rows].sort((a, b) => {
-              const areaA = getAreaSortIndex(a.area);
-              const areaB = getAreaSortIndex(b.area);
-      
-              if (areaA !== areaB) {
-                return areaA - areaB;
-              }
-      
-              // AREA เดียวกัน เรียงตาม Time จากเก่า -> ใหม่
-              return getTimeSortValue(a.rawTimeStmp) - getTimeSortValue(b.rawTimeStmp);
-            });
+
+         const sortInventoryRows = (rows) => {
+                return [...rows].sort((a, b) => {
+                  const nameCompare = String(a.itemName || '').localeCompare(
+                    String(b.itemName || ''),
+                    undefined,
+                    {
+                      numeric: true,
+                      sensitivity: 'base'
+                    }
+                  );
+
+                  if (nameCompare !== 0) {
+                    return nameCompare;
+                  }
+
+                  const specCompare = String(a.itemSpec || '').localeCompare(
+                    String(b.itemSpec || ''),
+                    undefined,
+                    {
+                      numeric: true,
+                      sensitivity: 'base'
+                    }
+                  );
+
+                  if (specCompare !== 0) {
+                    return specCompare;
+                  }
+
+                  // ถ้า MaterialName และ Spec เท่ากัน ค่อยเรียงตามเวลาเก่า -> ใหม่
+                  return getTimeSortValue(a.rawTimeStmp) - getTimeSortValue(b.rawTimeStmp);
+                });
           };
       
           // =============================
@@ -363,7 +362,7 @@ module.exports = {
           }
       
           // =============================
-          // 4) Sort ตาม AREA pattern แล้วค่อย add row
+          // 4) Sort by Material Name ASC, then Spec ASC
           // =============================
           const sortedRows = sortInventoryRows(exportRows);
       

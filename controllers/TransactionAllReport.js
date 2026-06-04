@@ -68,6 +68,7 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+          coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: row.type || '',
           inchargeBy: row.User
@@ -134,6 +135,7 @@ module.exports = {
         let incomingMap = new Map();
         let userMap = new Map();
         let incomingLocQtyMap = new Map();
+        let incomingLocCoilMap = new Map();
 
         if (incomingIds.length) {
           const incomingRows = await prisma.incoming.findMany({
@@ -182,6 +184,7 @@ module.exports = {
             select: {
               id: true,
               jobId: true,
+              coil: true,
               qty: true
             }
           });
@@ -189,6 +192,7 @@ module.exports = {
           for (const loc of incomingLocRows) {
             if (!incomingLocQtyMap.has(loc.jobId)) {
               incomingLocQtyMap.set(loc.jobId, Number(loc.qty || 0));
+              incomingLocCoilMap.set(loc.jobId, Number(loc.coil || 0));
             }
           }
         }
@@ -197,6 +201,7 @@ module.exports = {
           const incoming = row.IncomingId ? incomingMap.get(row.IncomingId) : null;
           const user = row.inchargeByUserId ? userMap.get(row.inchargeByUserId) : null;
           const qty = incomingLocQtyMap.get(row.id) || 0;
+          const coil = incomingLocCoilMap.get(row.id) || 0;
 
           return {
             areaName: row.Area?.name || '',
@@ -205,6 +210,7 @@ module.exports = {
             materialName: incoming?.itemName || '',
             materialSpec: incoming?.itemSpec || '',
             lotNo: incoming?.lotNo || '',
+            coil: Number(coil || 0),
             qty: Number(qty || 0),
             type: 'Issue',
             inchargeBy: user ? `${user.name || ''} (${user.empNo || '-'})` : '',
@@ -270,6 +276,7 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+          coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: 'StockOut',
           inchargeBy: row.User
@@ -431,6 +438,7 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+          coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: row.type || '',
           inchargeBy: row.User
@@ -497,6 +505,8 @@ module.exports = {
         let incomingMap = new Map();
         let userMap = new Map();
         let incomingLocQtyMap = new Map();
+        let incomingLocCoilMap = new Map();
+
   
         if (incomingIds.length) {
           const incomingRows = await prisma.incoming.findMany({
@@ -545,6 +555,7 @@ module.exports = {
             select: {
               id: true,
               jobId: true,
+              coil: true,
               qty: true
             }
           });
@@ -552,6 +563,7 @@ module.exports = {
           for (const loc of incomingLocRows) {
             if (!incomingLocQtyMap.has(loc.jobId)) {
               incomingLocQtyMap.set(loc.jobId, Number(loc.qty || 0));
+              incomingLocCoilMap.set(loc.jobId, Number(loc.coil || 0));
             }
           }
         }
@@ -560,7 +572,8 @@ module.exports = {
           const incoming = row.IncomingId ? incomingMap.get(row.IncomingId) : null;
           const user = row.inchargeByUserId ? userMap.get(row.inchargeByUserId) : null;
           const qty = incomingLocQtyMap.get(row.id) || 0;
-  
+          const coil = incomingLocCoilMap.get(row.id) || 0;
+
           return {
             areaName: row.Area?.name || '',
             incomingJobNo: incoming?.jobNo || '',
@@ -568,10 +581,11 @@ module.exports = {
             materialName: incoming?.itemName || '',
             materialSpec: incoming?.itemSpec || '',
             lotNo: incoming?.lotNo || '',
+            coil: Number(coil || 0),
             qty: Number(qty || 0),
             type: 'Issue',
             inchargeBy: user ? `${user.name || ''} (${user.empNo || '-'})` : '',
-            remark: row.remark || '',
+            remark: row.remarkMC || '',
             time: row.inchargeTime || null
           };
         });
@@ -633,6 +647,7 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+          coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: 'StockOut',
           inchargeBy: row.User
@@ -661,6 +676,7 @@ module.exports = {
         { header: 'Material Name', key: 'materialName', width: 28 },
         { header: 'Material Spec', key: 'materialSpec', width: 24 },
         { header: 'Lot No', key: 'lotNo', width: 20 },
+        { header: 'Coil', key: 'coil', width: 12 },
         { header: 'Qty', key: 'qty', width: 12 },
         { header: 'Area Name', key: 'areaName', width: 20 },
         { header: 'Type', key: 'type', width: 16 },
@@ -705,6 +721,7 @@ module.exports = {
           materialName: row.materialName || '',
           materialSpec: row.materialSpec || '',
           lotNo: row.lotNo || '',
+          coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           areaName: row.areaName || '',
           type: row.type || '',
@@ -743,7 +760,7 @@ module.exports = {
   
           cell.alignment = {
             vertical: 'middle',
-            horizontal: colNumber === 6 ? 'right' : 'left',
+            horizontal: colNumber === 6 || colNumber === 7 ? 'right' : 'left',
             wrapText: true
           };
   
@@ -761,7 +778,7 @@ module.exports = {
   
       worksheet.autoFilter = {
         from: 'A1',
-        to: 'K1'
+        to: 'L1'
       };
   
       res.setHeader(
