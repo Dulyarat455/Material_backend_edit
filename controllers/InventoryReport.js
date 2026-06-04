@@ -53,7 +53,8 @@ module.exports = {
                     coil: true,
                     qtyKgsPcs: true,
                     unit: true,
-                    unitPrice: true 
+                    unitPrice: true,
+                    notControl: true
                   }
                 },
                 Store: {
@@ -85,6 +86,7 @@ module.exports = {
                 totalPrice: qtyKgsPcs * unitPrice,
                 area: row.Store?.name || '',
                 stockNote: row.stockNote || '',
+                notControl: row.Incoming.notControl || '',
                 timeStmp: row.timeStmp,
                 remark: row.Incoming?.remark || '' 
               };
@@ -745,7 +747,89 @@ module.exports = {
 
             return res.status(500).send({ error: e.message });
           }
+    },
+
+
+    editNotControl: async (req, res) => {
+      try {
+        const { incomingId, controlKey, userId } = req.body;
+
+        if (incomingId == null) {
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+
+        const checkIncoming = await prisma.incoming.findFirst({
+            where: {
+              id: parseInt(incomingId),
+              status: 'use',
+            },
+          });
+
+          if (!checkIncoming) {
+            return res.status(400).send({ message: 'incoming_not_found' });
+          }
+          
+
+          const results = await prisma.$transaction(async (tx) => {
+
+                const latestTransactionStore = await tx.transactionStore.findFirst({
+                  where: {
+                    incomingId: parseInt(incomingId),
+                    status: 'use'
+                  },
+                  orderBy: [
+                    { timeStmp: 'desc' },
+                    { id: 'desc' }
+                  ]
+                });
+
+                if (!latestTransactionStore) {
+                  throw new Error('transaction_store_not_found');
+                }
+          
+                const updateIncoming = await tx.incoming.update({
+                  where: {
+                    id: parseInt(incomingId)
+                  },
+                  data: {
+                    notControl: controlKey
+                  }
+                });
+
+                const createdHistory = await tx.transactionStoreHistory.create({
+                  data: {
+                    storeId: latestTransactionStore.storeId,
+                    incomingId: latestTransactionStore.incomingId,
+                    userId: parseInt(userId),
+                    stockNote: latestTransactionStore.stockNote || '',
+                    type: 'EditNotControl',
+                    coil: parseInt(checkIncoming.coil),
+                    qty: parseInt(checkIncoming.qtyKgsPcs)
+                  }
+                });
+
+            return {
+              updateIncoming,
+              createdHistory
+            };
+          });
+          
+          return res.send({
+            message: 'success',
+            results
+          });
+
+      }catch(e){
+        if (
+          e.message === 'transaction_store_not_found'
+        ) {
+          return res.status(400).send({ message: e.message });
+        }
+        return res.status(500).send({ error: e.message });
+      } 
     }
+
+
 
 
 

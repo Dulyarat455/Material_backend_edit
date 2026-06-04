@@ -173,7 +173,7 @@ app.post('/api/inventory/exportExcel',(req, res) => inventoryReportController.ex
 app.post('/api/inventory/editStockNote',(req, res) => inventoryReportController.editStockNote(req,res))
 app.post('/api/inventory/editCoil',(req,res) => inventoryReportController.editCoil(req,res))
 app.post('/api/inventory/editQty',(req,res) => inventoryReportController.editQty(req,res))
-
+app.post('/api/inventory/editNotControl',(req,res) => inventoryReportController.editNotControl(req,res))
 
 //StockOutReport
 
