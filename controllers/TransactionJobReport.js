@@ -639,6 +639,9 @@ module.exports = {
           excelRowIndex++;
         }
       }
+
+      worksheet.getColumn('coil').numFmt = '#,##0';
+      worksheet.getColumn('qty').numFmt = '#,##0.###';
   
       worksheet.autoFilter = {
         from: 'A1',

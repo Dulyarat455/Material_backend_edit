@@ -1,0 +1,25 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[IncomingLoc] ALTER COLUMN [qty] FLOAT(53) NOT NULL;
+
+-- AlterTable
+ALTER TABLE [dbo].[StockOut] ALTER COLUMN [qty] FLOAT(53) NULL;
+
+-- AlterTable
+ALTER TABLE [dbo].[TransactionStoreHistory] ALTER COLUMN [qty] FLOAT(53) NULL;
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

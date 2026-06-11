@@ -114,7 +114,7 @@ model Incoming{
   unitPrice String
   qtyOfPalletPack String
   coil Int
-  qtyKgsPcs Int
+  qtyKgsPcs Float
   unit String
   kgsCoil String
   odCoil String
@@ -129,6 +129,7 @@ model Incoming{
   supplier String
   amount String
   notControl String?
+  reInspectionDate DateTime?
   status String @default("use")
   TimeStateIncoming TimeStateIncoming[]
   TransactionStore TransactionStore[]
@@ -175,7 +176,7 @@ model TransactionStoreHistory {
   stockNote String?
   type String?
   coil Int?
-  qty Int?
+  qty Float?
   status String @default("use")
   Store Store @relation(fields: [storeId], references: [id])
   Incoming Incoming @relation(fields: [incomingId], references: [id])
@@ -242,7 +243,7 @@ model StockOut {
   inchargeByUserId Int
   remark String?
   coil Int?
-  qty Int?
+  qty Float?
   timeStmp DateTime @default(now())
   status String @default("use")
   Incoming Incoming @relation(fields: [incomingId], references: [id])
@@ -256,7 +257,7 @@ model IncomingLoc {
   id Int @id() @default(autoincrement())
   incomingId Int 
   coil Int
-  qty Int 
+  qty Float 
   jobId Int
   timeStmp DateTime @default(now())
   status String @default("use")
@@ -285,7 +286,22 @@ model SyncTimeStmp {
 }
 
 
+model LogNotControl {
+  id Int @id() @default(autoincrement())
+  incomingId Int?
+  historyId Int?
+  notControl String
+  status String @default("use")
+  timeStmp DateTime @default(now())
+}
 
+
+model IncomingEditReturn {
+  id Int @id() @default(autoincrement())
+  incomingId Int
+  timeStmp DateTime
+  status String @default("use")
+}
 
 
 

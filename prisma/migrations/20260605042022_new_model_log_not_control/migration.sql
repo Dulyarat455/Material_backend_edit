@@ -1,0 +1,26 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateTable
+CREATE TABLE [dbo].[LogNotControl] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [incomingId] INT NOT NULL,
+    [notControl] NVARCHAR(1000) NOT NULL,
+    [status] NVARCHAR(1000) NOT NULL CONSTRAINT [LogNotControl_status_df] DEFAULT 'use',
+    [timeStmp] DATETIME2 NOT NULL CONSTRAINT [LogNotControl_timeStmp_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [LogNotControl_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

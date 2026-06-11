@@ -5,81 +5,130 @@ const prisma = new PrismaClient();
 
 module.exports = {
   list: async (req, res) => {
-    try {
-      const chunkSize = 500;
-      const results = [];
+          try {
+            const chunkSize = 500;
+            const results = [];
 
-      // =========================
-      // 1) TransactionStoreHistory
-      // =========================
-      const tshIds = await prisma.transactionStoreHistory.findMany({
-        where: {
-          status: 'use'
-        },
-        orderBy: {
-          id: 'desc'
-        },
-        select: {
-          id: true
-        }
-      });
-
-      const allTshIds = tshIds.map(x => x.id);
-
-      for (let i = 0; i < allTshIds.length; i += chunkSize) {
-        const chunkIds = allTshIds.slice(i, i + chunkSize);
-
-        const chunkRows = await prisma.transactionStoreHistory.findMany({
+         // =========================
+        // 1) TransactionStoreHistory
+        // =========================
+        const tshIds = await prisma.transactionStoreHistory.findMany({
           where: {
-            id: { in: chunkIds },
             status: 'use'
           },
           orderBy: {
             id: 'desc'
           },
-          include: {
-            Store: {
-              select: {
-                name: true
-              }
-            },
-            Incoming: {
-              select: {
-                jobNo: true,
-                materialNo: true,
-                itemName: true,
-                itemSpec: true,
-                lotNo: true
-              }
-            },
-            User: {
-              select: {
-                name: true,
-                empNo: true
-              }
-            }
+          select: {
+            id: true
           }
         });
 
-        const mapped = chunkRows.map((row) => ({
-          areaName: row.Store?.name || '',
-          incomingJobNo: row.Incoming?.jobNo || '',
-          materialNo: row.Incoming?.materialNo || '',
-          materialName: row.Incoming?.itemName || '',
-          materialSpec: row.Incoming?.itemSpec || '',
-          lotNo: row.Incoming?.lotNo || '',
-          coil: Number(row.coil || 0),
-          qty: Number(row.qty || 0),
-          type: row.type || '',
-          inchargeBy: row.User
-            ? `${row.User.name || ''} (${row.User.empNo || '-'})`
-            : '',
-          remark: row.stockNote || '',
-          time: row.timeStmp
-        }));
+        const allTshIds = tshIds.map(x => x.id);
 
-        results.push(...mapped);
-      }
+        for (let i = 0; i < allTshIds.length; i += chunkSize) {
+          const chunkIds = allTshIds.slice(i, i + chunkSize);
+
+          const chunkRows = await prisma.transactionStoreHistory.findMany({
+            where: {
+              id: { in: chunkIds },
+              status: 'use'
+            },
+            orderBy: {
+              id: 'desc'
+            },
+            include: {
+              Store: {
+                select: {
+                  name: true
+                }
+              },
+              Incoming: {
+                select: {
+                  jobNo: true,
+                  materialNo: true,
+                  itemName: true,
+                  itemSpec: true,
+                  lotNo: true,
+                  notControl: true
+                }
+              },
+              User: {
+                select: {
+                  name: true,
+                  empNo: true
+                }
+              }
+            }
+          });
+
+          const historyIds = Array.from(
+            new Set(
+              chunkRows
+                .filter(row => row.type === 'EditNotControl')
+                .map(row => row.id)
+                .filter(id => id != null)
+            )
+          );
+
+          let logNotControlMap = new Map();
+
+          if (historyIds.length) {
+            const logRows = await prisma.logNotControl.findMany({
+              where: {
+                historyId: {
+                  in: historyIds
+                },
+                status: 'use'
+              },
+              orderBy: [
+                {
+                  timeStmp: 'desc'
+                },
+                {
+                  id: 'desc'
+                }
+              ],
+              select: {
+                id: true,
+                historyId: true,
+                notControl: true,
+                timeStmp: true
+              }
+            });
+
+            for (const log of logRows) {
+              if (!logNotControlMap.has(log.historyId)) {
+                logNotControlMap.set(log.historyId, log.notControl || '');
+              }
+            }
+          }
+
+          const mapped = chunkRows.map((row) => ({
+            areaName: row.Store?.name || '',
+            incomingJobNo: row.Incoming?.jobNo || '',
+            materialNo: row.Incoming?.materialNo || '',
+            materialName: row.Incoming?.itemName || '',
+            materialSpec: row.Incoming?.itemSpec || '',
+            lotNo: row.Incoming?.lotNo || '',
+
+            notControl:
+              row.type === 'EditNotControl'
+                ? logNotControlMap.get(row.id) || ''
+                : row.Incoming?.notControl || '',
+
+            coil: Number(row.coil || 0),
+            qty: Number(row.qty || 0),
+            type: row.type || '',
+            inchargeBy: row.User
+              ? `${row.User.name || ''} (${row.User.empNo || '-'})`
+              : '',
+            remark: row.stockNote || '',
+            time: row.timeStmp
+          }));
+
+          results.push(...mapped);
+        }
 
       // =========================
       // 2) Job (issue only, state = complete)
@@ -149,7 +198,8 @@ module.exports = {
               materialNo: true,
               itemName: true,
               itemSpec: true,
-              lotNo: true
+              lotNo: true,
+              notControl: true
             }
           });
 
@@ -210,6 +260,7 @@ module.exports = {
             materialName: incoming?.itemName || '',
             materialSpec: incoming?.itemSpec || '',
             lotNo: incoming?.lotNo || '',
+            notControl: incoming?.notControl || '',
             coil: Number(coil || 0),
             qty: Number(qty || 0),
             type: 'Issue',
@@ -257,7 +308,8 @@ module.exports = {
                 materialNo: true,
                 itemName: true,
                 itemSpec: true,
-                lotNo: true
+                lotNo: true,
+                notControl: true
               }
             },
             User: {
@@ -276,6 +328,7 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+          notControl: row.Incoming?.notControl || '',
           coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: 'StockOut',
@@ -393,12 +446,12 @@ module.exports = {
           id: true
         }
       });
-  
+
       const allTshIds = tshIds.map(x => x.id);
-  
+
       for (let i = 0; i < allTshIds.length; i += chunkSize) {
         const chunkIds = allTshIds.slice(i, i + chunkSize);
-  
+
         const chunkRows = await prisma.transactionStoreHistory.findMany({
           where: {
             id: { in: chunkIds },
@@ -419,7 +472,8 @@ module.exports = {
                 materialNo: true,
                 itemName: true,
                 itemSpec: true,
-                lotNo: true
+                lotNo: true,
+                notControl: true
               }
             },
             User: {
@@ -430,7 +484,45 @@ module.exports = {
             }
           }
         });
-  
+
+        // เอา id ของ TransactionStoreHistory ไปหาใน LogNotControl.historyId
+        const historyIds = Array.from(
+          new Set(
+            chunkRows
+              .map(row => row.id)
+              .filter(id => id != null)
+          )
+        );
+
+        let logNotControlMap = new Map();
+
+        if (historyIds.length) {
+          const logRows = await prisma.logNotControl.findMany({
+            where: {
+              historyId: {
+                in: historyIds
+              },
+              status: 'use'
+            },
+            orderBy: [
+              { timeStmp: 'desc' },
+              { id: 'desc' }
+            ],
+            select: {
+              id: true,
+              historyId: true,
+              notControl: true,
+              timeStmp: true
+            }
+          });
+
+          for (const log of logRows) {
+            if (!logNotControlMap.has(log.historyId)) {
+              logNotControlMap.set(log.historyId, log.notControl || '');
+            }
+          }
+        }
+
         const mapped = chunkRows.map((row) => ({
           areaName: row.Store?.name || '',
           incomingJobNo: row.Incoming?.jobNo || '',
@@ -438,6 +530,14 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+
+          // สำคัญ:
+          // ถ้าเป็น EditNotControl ให้ใช้ LogNotControl
+          // ถ้าเป็น type อื่น ให้ใช้ Incoming.notControl
+          notControl: row.type === 'EditNotControl'
+            ? (logNotControlMap.get(row.id) || '')
+            : (row.Incoming?.notControl || ''),
+
           coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: row.type || '',
@@ -447,15 +547,35 @@ module.exports = {
           remark: row.stockNote || '',
           time: row.timeStmp
         }));
-  
+
         results.push(...mapped);
       }
-  
-      // =========================
-      // 2) Job (issue only, state = complete)
-      // =========================
-      const jobIds = await prisma.job.findMany({
+
+    // =========================
+    // 2) Job (issue only, state = complete)
+    // =========================
+    const jobIds = await prisma.job.findMany({
+      where: {
+        status: 'use',
+        type: 'issue',
+        state: 'complete'
+      },
+      orderBy: {
+        id: 'desc'
+      },
+      select: {
+        id: true
+      }
+    });
+
+    const allJobIds = jobIds.map(x => x.id);
+
+    for (let i = 0; i < allJobIds.length; i += chunkSize) {
+      const chunkIds = allJobIds.slice(i, i + chunkSize);
+
+      const chunkRows = await prisma.job.findMany({
         where: {
+          id: { in: chunkIds },
           status: 'use',
           type: 'issue',
           state: 'complete'
@@ -463,135 +583,116 @@ module.exports = {
         orderBy: {
           id: 'desc'
         },
-        select: {
-          id: true
+        include: {
+          Area: {
+            select: {
+              name: true
+            }
+          }
         }
       });
-  
-      const allJobIds = jobIds.map(x => x.id);
-  
-      for (let i = 0; i < allJobIds.length; i += chunkSize) {
-        const chunkIds = allJobIds.slice(i, i + chunkSize);
-  
-        const chunkRows = await prisma.job.findMany({
+
+      const incomingIds = Array.from(
+        new Set(chunkRows.map(x => x.IncomingId).filter(x => x != null))
+      );
+
+      const inchargeIds = Array.from(
+        new Set(chunkRows.map(x => x.inchargeByUserId).filter(x => x != null))
+      );
+
+      const jobIdList = chunkRows.map(x => x.id);
+
+      let incomingMap = new Map();
+      let userMap = new Map();
+      let incomingLocQtyMap = new Map();
+      let incomingLocCoilMap = new Map();
+
+      if (incomingIds.length) {
+        const incomingRows = await prisma.incoming.findMany({
           where: {
-            id: { in: chunkIds },
-            status: 'use',
-            type: 'issue',
-            state: 'complete'
+            id: { in: incomingIds },
+            status: 'use'
+          },
+          select: {
+            id: true,
+            jobNo: true,
+            materialNo: true,
+            itemName: true,
+            itemSpec: true,
+            lotNo: true,
+            notControl: true
+          }
+        });
+
+        incomingMap = new Map(incomingRows.map(x => [x.id, x]));
+      }
+
+      if (inchargeIds.length) {
+        const userRows = await prisma.user.findMany({
+          where: {
+            id: { in: inchargeIds },
+            status: 'use'
+          },
+          select: {
+            id: true,
+            name: true,
+            empNo: true
+          }
+        });
+
+        userMap = new Map(userRows.map(x => [x.id, x]));
+      }
+
+      if (jobIdList.length) {
+        const incomingLocRows = await prisma.incomingLoc.findMany({
+          where: {
+            jobId: { in: jobIdList },
+            status: 'use'
           },
           orderBy: {
             id: 'desc'
           },
-          include: {
-            Area: {
-              select: {
-                name: true
-              }
-            }
+          select: {
+            id: true,
+            jobId: true,
+            coil: true,
+            qty: true
           }
         });
-  
-        const incomingIds = Array.from(
-          new Set(chunkRows.map(x => x.IncomingId).filter(x => x != null))
-        );
-  
-        const inchargeIds = Array.from(
-          new Set(chunkRows.map(x => x.inchargeByUserId).filter(x => x != null))
-        );
-  
-        const jobIdList = chunkRows.map(x => x.id);
-  
-        let incomingMap = new Map();
-        let userMap = new Map();
-        let incomingLocQtyMap = new Map();
-        let incomingLocCoilMap = new Map();
 
-  
-        if (incomingIds.length) {
-          const incomingRows = await prisma.incoming.findMany({
-            where: {
-              id: { in: incomingIds },
-              status: 'use'
-            },
-            select: {
-              id: true,
-              jobNo: true,
-              materialNo: true,
-              itemName: true,
-              itemSpec: true,
-              lotNo: true
-            }
-          });
-  
-          incomingMap = new Map(incomingRows.map(x => [x.id, x]));
-        }
-  
-        if (inchargeIds.length) {
-          const userRows = await prisma.user.findMany({
-            where: {
-              id: { in: inchargeIds },
-              status: 'use'
-            },
-            select: {
-              id: true,
-              name: true,
-              empNo: true
-            }
-          });
-  
-          userMap = new Map(userRows.map(x => [x.id, x]));
-        }
-  
-        if (jobIdList.length) {
-          const incomingLocRows = await prisma.incomingLoc.findMany({
-            where: {
-              jobId: { in: jobIdList },
-              status: 'use'
-            },
-            orderBy: {
-              id: 'desc'
-            },
-            select: {
-              id: true,
-              jobId: true,
-              coil: true,
-              qty: true
-            }
-          });
-  
-          for (const loc of incomingLocRows) {
-            if (!incomingLocQtyMap.has(loc.jobId)) {
-              incomingLocQtyMap.set(loc.jobId, Number(loc.qty || 0));
-              incomingLocCoilMap.set(loc.jobId, Number(loc.coil || 0));
-            }
+        for (const loc of incomingLocRows) {
+          if (!incomingLocQtyMap.has(loc.jobId)) {
+            incomingLocQtyMap.set(loc.jobId, Number(loc.qty || 0));
+            incomingLocCoilMap.set(loc.jobId, Number(loc.coil || 0));
           }
         }
-  
-        const mapped = chunkRows.map((row) => {
-          const incoming = row.IncomingId ? incomingMap.get(row.IncomingId) : null;
-          const user = row.inchargeByUserId ? userMap.get(row.inchargeByUserId) : null;
-          const qty = incomingLocQtyMap.get(row.id) || 0;
-          const coil = incomingLocCoilMap.get(row.id) || 0;
-
-          return {
-            areaName: row.Area?.name || '',
-            incomingJobNo: incoming?.jobNo || '',
-            materialNo: incoming?.materialNo || '',
-            materialName: incoming?.itemName || '',
-            materialSpec: incoming?.itemSpec || '',
-            lotNo: incoming?.lotNo || '',
-            coil: Number(coil || 0),
-            qty: Number(qty || 0),
-            type: 'Issue',
-            inchargeBy: user ? `${user.name || ''} (${user.empNo || '-'})` : '',
-            remark: row.remarkMC || '',
-            time: row.inchargeTime || null
-          };
-        });
-  
-        results.push(...mapped);
       }
+
+      const mapped = chunkRows.map((row) => {
+        const incoming = row.IncomingId ? incomingMap.get(row.IncomingId) : null;
+        const user = row.inchargeByUserId ? userMap.get(row.inchargeByUserId) : null;
+        const qty = incomingLocQtyMap.get(row.id) || 0;
+        const coil = incomingLocCoilMap.get(row.id) || 0;
+
+        return {
+          areaName: row.Area?.name || '',
+          incomingJobNo: incoming?.jobNo || '',
+          materialNo: incoming?.materialNo || '',
+          materialName: incoming?.itemName || '',
+          materialSpec: incoming?.itemSpec || '',
+          lotNo: incoming?.lotNo || '',
+          notControl: incoming?.notControl || '',
+          coil: Number(coil || 0),
+          qty: Number(qty || 0),
+          type: 'Issue',
+          inchargeBy: user ? `${user.name || ''} (${user.empNo || '-'})` : '',
+          remark: row.remarkMC || '',
+          time: row.inchargeTime || null
+        };
+      });
+
+      results.push(...mapped);
+    }
   
       // =========================
       // 3) StockOut
@@ -607,12 +708,12 @@ module.exports = {
           id: true
         }
       });
-  
+
       const allStockOutIds = stockOutIds.map(x => x.id);
-  
+
       for (let i = 0; i < allStockOutIds.length; i += chunkSize) {
         const chunkIds = allStockOutIds.slice(i, i + chunkSize);
-  
+
         const chunkRows = await prisma.stockOut.findMany({
           where: {
             id: { in: chunkIds },
@@ -628,7 +729,8 @@ module.exports = {
                 materialNo: true,
                 itemName: true,
                 itemSpec: true,
-                lotNo: true
+                lotNo: true,
+                notControl: true
               }
             },
             User: {
@@ -639,7 +741,7 @@ module.exports = {
             }
           }
         });
-  
+
         const mapped = chunkRows.map((row) => ({
           areaName: 'OutSideStore',
           incomingJobNo: row.Incoming?.jobNo || '',
@@ -647,6 +749,7 @@ module.exports = {
           materialName: row.Incoming?.itemName || '',
           materialSpec: row.Incoming?.itemSpec || '',
           lotNo: row.Incoming?.lotNo || '',
+          notControl: row.Incoming?.notControl || '',
           coil: Number(row.coil || 0),
           qty: Number(row.qty || 0),
           type: 'StockOut',
@@ -656,7 +759,7 @@ module.exports = {
           remark: row.remark || '',
           time: row.timeStmp
         }));
-  
+
         results.push(...mapped);
       }
   
@@ -682,6 +785,7 @@ module.exports = {
         { header: 'Type', key: 'type', width: 16 },
         { header: 'Incharge By', key: 'inchargeBy', width: 28 },
         { header: 'Remark', key: 'remark', width: 30 },
+        { header: 'Not Control', key: 'notControlText', width: 18 },
         { header: 'Time', key: 'time', width: 24 }
       ];
   
@@ -727,6 +831,7 @@ module.exports = {
           type: row.type || '',
           inchargeBy: row.inchargeBy || '',
           remark: row.remark || '',
+          notControlText: row.notControl === 'yes' ? 'Not Control' : '',
           time: row.time
             ? new Date(row.time).toLocaleString('th-TH', {
                 year: 'numeric',
@@ -775,10 +880,13 @@ module.exports = {
   
         excelRowIndex++;
       }
+
+      worksheet.getColumn('coil').numFmt = '#,##0';
+      worksheet.getColumn('qty').numFmt = '#,##0.###';
   
       worksheet.autoFilter = {
         from: 'A1',
-        to: 'L1'
+        to: 'M1'
       };
   
       res.setHeader(

@@ -62,16 +62,28 @@ module.exports = {
               }
 
 
-            const checkInMaterialMaster = await prisma.material.findFirst({
-              where:{
-                materialNo: materialNo,
-                status: 'use'
-              }
-            })
+              const materialNoFromBody = String(materialNo || '').trim();
 
-            if(!checkInMaterialMaster){
-              return res.status(400).send({ message: 'not_found_this_Material_in_Master' });
-            }
+              const checkInMaterialMaster = await prisma.material.findFirst({
+                where: {
+                  materialNo: materialNoFromBody,
+                  status: 'use'
+                }
+              });
+              
+              if (!checkInMaterialMaster) {
+                return res.status(400).send({
+                  message: 'not_found_this_Material_in_Master'
+                });
+              }
+              
+              if ((checkInMaterialMaster.materialNo || '').trim() !== materialNoFromBody) {
+                return res.status(400).send({
+                  message: 'material_no_case_not_match',
+                  scanMaterialNo: materialNoFromBody,
+                  masterMaterialNo: checkInMaterialMaster.materialNo
+                });
+              }
 
 
 
@@ -89,7 +101,7 @@ module.exports = {
                       unitPrice: unitPrice,
                       qtyOfPalletPack: qtyOfPalletPack,
                       coil: parseInt(coil),
-                      qtyKgsPcs: parseInt(qtyKgsPcs),
+                      qtyKgsPcs: parseFloat(qtyKgsPcs),
                       unit: unit,
                       kgsCoil: kgsCoil,
                       odCoil: odCoil,
@@ -139,7 +151,7 @@ module.exports = {
                       stockNote: stockNote,
                       type: "StockIn",
                       coil: parseInt(coil),
-                      qty: parseInt(qtyKgsPcs)
+                      qty: parseFloat(qtyKgsPcs)
                     }
                 });
     
@@ -370,7 +382,7 @@ module.exports = {
               stockNote: stockNote || '',
               type: "MoveArea",
               coil: parseInt(checkIncoming.coil),
-              qty: parseInt(checkIncoming.qtyKgsPcs)
+              qty: parseFloat(checkIncoming.qtyKgsPcs)
             },
           });
     
@@ -510,7 +522,7 @@ module.exports = {
                 data: {
                   incomingId: incomingIdInt,
                   coil: parseInt(checkIncoming.coil),
-                  qty: parseInt(checkIncoming.qtyKgsPcs),
+                  qty: parseFloat(checkIncoming.qtyKgsPcs),
                   jobId: jobIdInt
                 }
               })
@@ -690,7 +702,7 @@ module.exports = {
                   },
                   data:{
                     coil: parseInt(coil)  ,
-                    qtyKgsPcs: parseInt(qty)
+                    qtyKgsPcs: parseFloat(qty)
                   }
                 })
   
@@ -700,7 +712,7 @@ module.exports = {
                   data: {
                     incomingId: incomingIdInt,
                     coil: parseInt(updateIncoming.coil),
-                    qty: parseInt(updateIncoming.qtyKgsPcs),
+                    qty: parseFloat(updateIncoming.qtyKgsPcs),
                     jobId: jobIdInt
                   }
                 })
@@ -737,7 +749,7 @@ module.exports = {
                     stockNote: stockNote, 
                     type: "ReturnStockIn",
                     coil: parseInt(coil)  ,
-                    qty:  parseInt(qty)
+                    qty:  parseFloat(qty)
                    }
                 })
   
@@ -897,7 +909,7 @@ module.exports = {
               inchargeByUserId: parseInt(inchargeByUserId),
               remark: remark || '',
               coil: parseInt(incoming.coil),
-              qty: parseInt(incoming.qtyKgsPcs) 
+              qty: parseFloat(incoming.qtyKgsPcs) 
             },
             select: {
               id: true,
@@ -1240,6 +1252,12 @@ module.exports = {
           if (!Number.isFinite(n)) return 0;
           return parseInt(n);
         };
+
+        const toFloat = (v) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return 0;
+          return n;
+        };
     
         const toNumberText = (v) => {
           if (v == null || v === '') return '';
@@ -1423,7 +1441,7 @@ module.exports = {
           const targetStoreId = Number(item.targetStoreId);
     
           const coilInt = toInt(row.COIL);
-          const qtyInt = toInt(row.QTY_KGSPCS);
+          const qtyFloat = toFloat(row.QTY_KGSPCS);
     
           try {
             const createdResult = await prisma.$transaction(async (tx) => {
@@ -1464,7 +1482,7 @@ module.exports = {
                   unitPrice: toNumberText(row.UNIT_PRICE),
                   qtyOfPalletPack: toNumberText(row.QTY_OF_PALLET),
                   coil: coilInt,
-                  qtyKgsPcs: qtyInt,
+                  qtyKgsPcs: qtyFloat,
                   unit: toText(row.UNIT),
                   kgsCoil: toNumberText(row.KGSCOIL),
                   odCoil: toText(row.OD_COIL_MM),
@@ -1516,7 +1534,7 @@ module.exports = {
                   stockNote: '',
                   type: 'StockIn',
                   coil: coilInt,
-                  qty: qtyInt
+                  qty: qtyFloat
                 },
                 select: {
                   id: true,

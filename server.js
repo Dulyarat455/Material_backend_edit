@@ -18,8 +18,8 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   'http://10.121.50.19:4200', // 👈 ใส่ IP เครื่อง Server notebook
-  //'http://10.121.1.85'// เครื่อง server จริง
+   'http://10.121.51.162:4200', // 👈 ใส่ IP เครื่อง Server notebook
+  // 'http://10.121.1.85'// เครื่อง server จริง
 
 ];
 
@@ -58,7 +58,7 @@ const server = http.createServer(app);
 
 const { Server } = require('socket.io');
 const io = new Server(server, {
-  //path: '/materialPressAPI/socket.io',
+ // path: '/materialPressAPI/socket.io',
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST'],
@@ -127,7 +127,7 @@ app.post('/api/area/filterByLineArea',(req, res)=> areaController.filterbyLineAr
 app.post('/api/material/create',(req, res) => materialController.add(req,res))
 app.get('/api/material/filterByMaterialNo',(req, res) => materialController.filterByMaterialNo(req,res))
 app.get('/api/material/list',(req, res) => materialController.list(req,res))
-app.get('/api/material/getMaterialByPbass',(req, res) => materialController.getMaterialByPbass(req,res))
+app.get('/api/material/getMaterialByPbass',(req, res) => materialController.getMaterialByPbassFourYearsBack(req,res))
 app.post('/api/material/delete',(req, res) => materialController.delete(req,res))
 app.post('/api/material/exportExcel',(req, res) => materialController.exportExcel(req,res))
 

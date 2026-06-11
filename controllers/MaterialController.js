@@ -295,6 +295,339 @@ module.exports = {
       }
     },
 
+
+    getMaterialByPbassFourYearsBack: async (req, res) => {
+      try {
+        const token = process.env.PBASS_TOKEN;
+        const baseUrl = process.env.PBASS_API_PBASS_MATERIAL_MASTER;
+    
+        if (!token) {
+          return res.status(500).send({
+            message: 'missing_pbass_token'
+          });
+        }
+    
+        if (!baseUrl) {
+          return res.status(500).send({
+            message: 'missing_pbass_material_master_url'
+          });
+        }
+    
+        const currentYear = new Date().getFullYear();
+        const targetYear = currentYear - 1;
+        const requestUrl = `${baseUrl}${targetYear}`;
+    
+        console.log('PBASS Material Master requestUrl =', requestUrl);
+    
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    
+        const response = await fetch(requestUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Accept: '*/*'
+          }
+        });
+    
+        const rawText = await response.text();
+    
+        if (!response.ok) {
+          return res.status(response.status).send({
+            message: 'pbass_material_master_fetch_failed',
+            error: rawText,
+            requestUrl
+          });
+        }
+    
+        let data;
+        try {
+          data = JSON.parse(rawText);
+        } catch (parseError) {
+          return res.status(500).send({
+            message: 'pbass_material_master_parse_failed',
+            error: parseError.message,
+            raw: rawText.slice(0, 2000),
+            requestUrl
+          });
+        }
+    
+        const rows = Array.isArray(data?.Data) ? data.Data : [];
+    
+        const toText = (v) => {
+          return v == null ? '' : String(v).trim();
+        };
+    
+        const chunkArray = (arr, size) => {
+          const chunks = [];
+    
+          for (let i = 0; i < arr.length; i += size) {
+            chunks.push(arr.slice(i, i + size));
+          }
+    
+          return chunks;
+        };
+    
+        const toPbassUpdateTime = (item) => {
+          const dateText = toText(item.latestUpdateDate || item.LATEST_UPDATE_DATE);
+          const timeText = toText(item.latestUpdateTime || item.LATEST_UPDATE_TIME) || '00:00:00';
+    
+          if (!dateText) return 0;
+    
+          const d = new Date(`${dateText.replace(/\//g, '-')}T${timeText}`);
+          const t = d.getTime();
+    
+          return Number.isNaN(t) ? 0 : t;
+        };
+    
+        const allowedAccountCodes = new Set([
+          '4520',
+          '4605-A',
+          '4605CZ',
+          '4605-C'
+        ]);
+    
+        const normalizedRows = [];
+        let invalidMaterialNoCount = 0;
+        let filteredOutAccountCount = 0;
+    
+        const accountSummary = new Map();
+    
+        for (const item of rows) {
+          const materialNo = toText(item.ITEM_NO);
+          const accountCode = toText(item.ACCOUNT);
+    
+          accountSummary.set(
+            accountCode || '-',
+            (accountSummary.get(accountCode || '-') || 0) + 1
+          );
+    
+          if (!materialNo) {
+            invalidMaterialNoCount++;
+            continue;
+          }
+    
+          if (!allowedAccountCodes.has(accountCode)) {
+            filteredOutAccountCount++;
+            continue;
+          }
+    
+          normalizedRows.push({
+            materialNo,
+            materialName: toText(item.ITEM_NAME),
+            materialSpec: toText(item.SPEC),
+            accountCode,
+            latestUpdateDate: toText(item.LATEST_UPDATE_DATE),
+            latestUpdateTime: toText(item.LATEST_UPDATE_TIME)
+          });
+        }
+    
+        const uniqueMap = new Map();
+        let duplicateInPayloadCount = 0;
+        const duplicateInPayloadSample = [];
+        let replacedByLatestCount = 0;
+    
+        for (const item of normalizedRows) {
+          const mapKey = item.materialNo;
+    
+          if (!uniqueMap.has(mapKey)) {
+            uniqueMap.set(mapKey, item);
+            continue;
+          }
+    
+          duplicateInPayloadCount++;
+    
+          if (duplicateInPayloadSample.length < 30) {
+            duplicateInPayloadSample.push(item);
+          }
+    
+          const existingItem = uniqueMap.get(mapKey);
+    
+          if (toPbassUpdateTime(item) > toPbassUpdateTime(existingItem)) {
+            uniqueMap.set(mapKey, item);
+            replacedByLatestCount++;
+          }
+        }
+    
+        const uniqueRows = Array.from(uniqueMap.values());
+        const materialNos = uniqueRows.map(item => item.materialNo);
+    
+        const materialNoChunks = chunkArray(materialNos, 500);
+        const existingMap = new Map();
+    
+        for (const chunk of materialNoChunks) {
+          const existingMaterials = await prisma.material.findMany({
+            where: {
+              materialNo: {
+                in: chunk
+              },
+              status: 'use'
+            },
+            select: {
+              id: true,
+              materialNo: true,
+              materialName: true,
+              materialSpec: true,
+              accountCode: true
+            }
+          });
+    
+          for (const item of existingMaterials) {
+            existingMap.set(item.materialNo, item);
+          }
+        }
+    
+        const createItems = [];
+        const updateItems = [];
+    
+        let duplicateCount = 0;
+        const duplicateSample = [];
+        const updateSample = [];
+        const createSample = [];
+    
+        for (const item of uniqueRows) {
+          const existing = existingMap.get(item.materialNo);
+    
+          if (!existing) {
+            const createItem = {
+              materialNo: item.materialNo,
+              materialName: item.materialName,
+              materialSpec: item.materialSpec,
+              accountCode: item.accountCode
+            };
+    
+            createItems.push(createItem);
+    
+            if (createSample.length < 30) {
+              createSample.push(createItem);
+            }
+    
+            continue;
+          }
+    
+          const sameName = (existing.materialName || '') === (item.materialName || '');
+          const sameSpec = (existing.materialSpec || '') === (item.materialSpec || '');
+          const sameAccountCode = (existing.accountCode || '') === (item.accountCode || '');
+    
+          if (sameName && sameSpec && sameAccountCode) {
+            duplicateCount++;
+    
+            if (duplicateSample.length < 30) {
+              duplicateSample.push({
+                materialNo: item.materialNo,
+                materialName: item.materialName,
+                materialSpec: item.materialSpec,
+                accountCode: item.accountCode
+              });
+            }
+    
+            continue;
+          }
+    
+          const updateItem = {
+            id: existing.id,
+            materialNo: item.materialNo,
+            oldMaterialName: existing.materialName || '',
+            oldMaterialSpec: existing.materialSpec || '',
+            oldAccountCode: existing.accountCode || '',
+            newMaterialName: item.materialName,
+            newMaterialSpec: item.materialSpec,
+            newAccountCode: item.accountCode || ''
+          };
+    
+          updateItems.push(updateItem);
+    
+          if (updateSample.length < 30) {
+            updateSample.push(updateItem);
+          }
+        }
+    
+        const createChunks = chunkArray(createItems, 500);
+        let createdCount = 0;
+    
+        for (const chunk of createChunks) {
+          if (!chunk.length) continue;
+    
+          const created = await prisma.material.createMany({
+            data: chunk
+          });
+    
+          createdCount += created.count || chunk.length;
+        }
+    
+        const updateChunks = chunkArray(updateItems, 100);
+        let updatedCount = 0;
+    
+        for (const chunk of updateChunks) {
+          await Promise.all(
+            chunk.map(item =>
+              prisma.material.update({
+                where: {
+                  id: item.id
+                },
+                data: {
+                  materialName: item.newMaterialName,
+                  materialSpec: item.newMaterialSpec,
+                  accountCode: item.newAccountCode
+                }
+              })
+            )
+          );
+    
+          updatedCount += chunk.length;
+        }
+    
+        return res.send({
+          message: 'Import material master from PBASS success',
+          requestUrl,
+          year: currentYear,
+    
+          totalFromApi: rows.length,
+          validRows: normalizedRows.length,
+          invalidMaterialNoCount,
+    
+          allowedAccountCodes: Array.from(allowedAccountCodes),
+          filteredOutAccountCount,
+    
+          accountSummary: Array.from(accountSummary.entries()).map(([accountCode, count]) => ({
+            accountCode,
+            count
+          })),
+    
+          uniqueRows: uniqueRows.length,
+    
+          createdCount,
+          updatedCount,
+          duplicateCount,
+          duplicateInPayloadCount,
+          replacedByLatestCount,
+    
+          totalMaterialNoChunks: materialNoChunks.length,
+          totalCreateChunks: createChunks.length,
+          totalUpdateChunks: updateChunks.length,
+    
+          chunkSize: {
+            findMany: 500,
+            createMany: 500,
+            updateBatch: 100
+          },
+    
+          createSample,
+          updateSample,
+          duplicateSample,
+          duplicateInPayloadSample
+        });
+      } catch (e) {
+        console.error('getMaterialByPbassFourYearsBack error:', e);
+    
+        return res.status(500).send({
+          message: 'get_material_by_pbass_four_years_back_failed',
+          error: e.message
+        });
+      }
+    },
+
+
     delete: async (req,res) =>{
       try{
           const {materialId} = req.body ;
