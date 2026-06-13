@@ -5,106 +5,228 @@ const prisma = new PrismaClient();
 
 module.exports = {
   list: async (req, res) => {
-          try {
-            const chunkSize = 500;
-            const results = [];
+     try {
+          const chunkSize = 500;
+          const results = [];
 
-         // =========================
-        // 1) TransactionStoreHistory
-        // =========================
-        const tshIds = await prisma.transactionStoreHistory.findMany({
+      // =========================
+      // 1) TransactionStoreHistory
+      // =========================
+      const tshIds = await prisma.transactionStoreHistory.findMany({
+        where: {
+          status: 'use'
+        },
+        orderBy: {
+          id: 'desc'
+        },
+        select: {
+          id: true
+        }
+      });
+
+      const allTshIds = tshIds.map(x => x.id);
+
+      for (let i = 0; i < allTshIds.length; i += chunkSize) {
+        const chunkIds = allTshIds.slice(i, i + chunkSize);
+
+        const chunkRows = await prisma.transactionStoreHistory.findMany({
           where: {
+            id: {
+              in: chunkIds
+            },
             status: 'use'
           },
           orderBy: {
             id: 'desc'
           },
-          select: {
-            id: true
+          include: {
+            Store: {
+              select: {
+                name: true
+              }
+            },
+            Incoming: {
+              select: {
+                jobNo: true,
+                materialNo: true,
+                itemName: true,
+                itemSpec: true,
+                lotNo: true,
+                notControl: true
+              }
+            },
+            User: {
+              select: {
+                name: true,
+                empNo: true
+              }
+            }
           }
         });
 
-        const allTshIds = tshIds.map(x => x.id);
+        // =========================
+        // เตรียม History IDs
+        // =========================
 
-        for (let i = 0; i < allTshIds.length; i += chunkSize) {
-          const chunkIds = allTshIds.slice(i, i + chunkSize);
+        const notControlHistoryIds = Array.from(
+          new Set(
+            chunkRows
+              .filter(row => row.type === 'EditNotControl')
+              .map(row => row.id)
+              .filter(id => id != null)
+          )
+        );
 
-          const chunkRows = await prisma.transactionStoreHistory.findMany({
+        const editLastReturnHistoryIds = Array.from(
+          new Set(
+            chunkRows
+              .filter(row => row.type === 'EditLastReturn')
+              .map(row => row.id)
+              .filter(id => id != null)
+          )
+        );
+
+        const editReInspectionHistoryIds = Array.from(
+          new Set(
+            chunkRows
+              .filter(row => row.type === 'EditReInspection')
+              .map(row => row.id)
+              .filter(id => id != null)
+          )
+        );
+
+        // =========================
+        // Maps
+        // =========================
+
+        const logNotControlMap = new Map();
+        const logEditLastReturnMap = new Map();
+        const logEditInSpectionMap = new Map();
+
+        // =========================
+        // LogNotControl
+        // =========================
+
+        if (notControlHistoryIds.length) {
+          const logRows = await prisma.logNotControl.findMany({
             where: {
-              id: { in: chunkIds },
+              historyId: {
+                in: notControlHistoryIds
+              },
+              status: 'use'
+            },
+            orderBy: [
+              {
+                timeStmp: 'desc'
+              },
+              {
+                id: 'desc'
+              }
+            ],
+            select: {
+              id: true,
+              historyId: true,
+              notControl: true,
+              timeStmp: true
+            }
+          });
+
+          for (const log of logRows) {
+            if (!logNotControlMap.has(log.historyId)) {
+              logNotControlMap.set(
+                log.historyId,
+                log.notControl || ''
+              );
+            }
+          }
+        }
+
+        // =========================
+        // LogEditLastReturn
+        // =========================
+
+        if (editLastReturnHistoryIds.length) {
+          const logRows = await prisma.logEditLastReturn.findMany({
+            where: {
+              historyId: {
+                in: editLastReturnHistoryIds
+              },
               status: 'use'
             },
             orderBy: {
               id: 'desc'
             },
-            include: {
-              Store: {
-                select: {
-                  name: true
-                }
-              },
-              Incoming: {
-                select: {
-                  jobNo: true,
-                  materialNo: true,
-                  itemName: true,
-                  itemSpec: true,
-                  lotNo: true,
-                  notControl: true
-                }
-              },
-              User: {
-                select: {
-                  name: true,
-                  empNo: true
-                }
-              }
+            select: {
+              id: true,
+              historyId: true,
+              lastReturn: true
             }
           });
 
-          const historyIds = Array.from(
-            new Set(
-              chunkRows
-                .filter(row => row.type === 'EditNotControl')
-                .map(row => row.id)
-                .filter(id => id != null)
-            )
-          );
-
-          let logNotControlMap = new Map();
-
-          if (historyIds.length) {
-            const logRows = await prisma.logNotControl.findMany({
-              where: {
-                historyId: {
-                  in: historyIds
-                },
-                status: 'use'
-              },
-              orderBy: [
-                {
-                  timeStmp: 'desc'
-                },
-                {
-                  id: 'desc'
-                }
-              ],
-              select: {
-                id: true,
-                historyId: true,
-                notControl: true,
-                timeStmp: true
-              }
-            });
-
-            for (const log of logRows) {
-              if (!logNotControlMap.has(log.historyId)) {
-                logNotControlMap.set(log.historyId, log.notControl || '');
-              }
+          for (const log of logRows) {
+            if (!logEditLastReturnMap.has(log.historyId)) {
+              logEditLastReturnMap.set(
+                log.historyId,
+                log.lastReturn || ''
+              );
             }
           }
+        }
 
-          const mapped = chunkRows.map((row) => ({
+        // =========================
+        // LogEditInSpection
+        // =========================
+
+        if (editReInspectionHistoryIds.length) {
+          const logRows = await prisma.logEditInSpection.findMany({
+            where: {
+              historyId: {
+                in: editReInspectionHistoryIds
+              },
+              status: 'use'
+            },
+            orderBy: [
+              {
+                timeStmp: 'desc'
+              },
+              {
+                id: 'desc'
+              }
+            ],
+            select: {
+              id: true,
+              historyId: true,
+              inSpection: true,
+              timeStmp: true
+            }
+          });
+
+          for (const log of logRows) {
+            if (!logEditInSpectionMap.has(log.historyId)) {
+              logEditInSpectionMap.set(
+                log.historyId,
+                log.inSpection || ''
+              );
+            }
+          }
+        }
+
+        // =========================
+        // Map Result
+        // =========================
+
+        const mapped = chunkRows.map((row) => {
+          let remark = row.stockNote || '';
+
+          if (row.type === 'EditLastReturn') {
+            remark = logEditLastReturnMap.get(row.id) || '';
+          } else if (row.type === 'DeleteLastReturn') {
+            remark = '';
+          } else if (row.type === 'EditReInspection') {
+            remark = logEditInSpectionMap.get(row.id) || '';
+          }
+
+          return {
             areaName: row.Store?.name || '',
             incomingJobNo: row.Incoming?.jobNo || '',
             materialNo: row.Incoming?.materialNo || '',
@@ -120,15 +242,18 @@ module.exports = {
             coil: Number(row.coil || 0),
             qty: Number(row.qty || 0),
             type: row.type || '',
+
             inchargeBy: row.User
               ? `${row.User.name || ''} (${row.User.empNo || '-'})`
               : '',
-            remark: row.stockNote || '',
-            time: row.timeStmp
-          }));
 
-          results.push(...mapped);
-        }
+            remark,
+            time: row.timeStmp
+          };
+        });
+
+        results.push(...mapped);
+      }
 
       // =========================
       // 2) Job (issue only, state = complete)
