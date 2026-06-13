@@ -304,6 +304,24 @@ model IncomingEditReturn {
 }
 
 
+model LogEditLastReturn {
+  id Int @id() @default(autoincrement())
+  historyId Int
+  lastReturn String
+  lastReturnId Int 
+  status String @default("use")
+}
+
+
+model LogEditInSpection {
+  id Int @id() @default(autoincrement())
+  historyId Int
+  incomingId Int
+  inSpection String 
+  timeStmp DateTime @default(now())
+  status String @default("use")
+}
+
 
 
 

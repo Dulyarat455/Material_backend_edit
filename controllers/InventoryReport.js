@@ -56,8 +56,8 @@ module.exports = {
                 qtyKgsPcs: true,
                 unit: true,
                 unitPrice: true,
-                notControl: true
-
+                notControl: true,
+                reInspectionDate: true
               }
             },
             Store: {
@@ -103,13 +103,114 @@ module.exports = {
           );
         }
   
-        // 4) map result
+        // 4) เตรียม incomingIds เพื่อหา lastReturn
+        const incomingIds = Array.from(
+          new Set(
+            chunkRows
+              .map(row => row.incomingId)
+              .filter(id => id != null)
+              .map(id => Number(id))
+          )
+        );
+  
+        let incomingEditReturnMap = new Map();
+        let returnStockInHistoryMap = new Map();
+  
+        if (incomingIds.length) {
+          // 4.1) หา latest จาก IncomingEditReturn
+          const incomingEditReturnRows = await prisma.incomingEditReturn.findMany({
+            where: {
+              incomingId: {
+                in: incomingIds
+              },
+              status: 'use'
+            },
+            orderBy: [
+              {
+                timeStmp: 'desc'
+              },
+              {
+                id: 'desc'
+              }
+            ],
+            select: {
+              id: true,
+              incomingId: true,
+              timeStmp: true
+            }
+          });
+  
+          for (const row of incomingEditReturnRows) {
+            if (!incomingEditReturnMap.has(row.incomingId)) {
+              incomingEditReturnMap.set(row.incomingId, row.timeStmp);
+            }
+          }
+  
+          // 4.2) หา latest จาก TransactionStoreHistory type ReturnStockIn
+          const returnStockInRows = await prisma.transactionStoreHistory.findMany({
+            where: {
+              incomingId: {
+                in: incomingIds
+              },
+              type: 'ReturnStockIn',
+              status: 'use'
+            },
+            orderBy: [
+              {
+                timeStmp: 'desc'
+              },
+              {
+                id: 'desc'
+              }
+            ],
+            select: {
+              id: true,
+              incomingId: true,
+              timeStmp: true
+            }
+          });
+  
+          for (const row of returnStockInRows) {
+            if (!returnStockInHistoryMap.has(row.incomingId)) {
+              returnStockInHistoryMap.set(row.incomingId, row.timeStmp);
+            }
+          }
+        }
+  
+        // 5) map result
         const mapped = chunkRows.map((row) => {
           const qtyKgsPcs = Number(row.Incoming?.qtyKgsPcs || 0);
           const unitPrice = Number(row.Incoming?.unitPrice || 0);
   
           const materialNo = String(row.Incoming?.materialNo || '').trim();
           const materialMaster = materialMap.get(materialNo);
+  
+          const incomingId = Number(row.incomingId);
+  
+          const incomingEditReturnTime = incomingEditReturnMap.get(incomingId) || null;
+          const returnStockInHistoryTime = returnStockInHistoryMap.get(incomingId) || null;
+  
+          let lastReturn = null;
+          let lastReturnRef = '';
+  
+          if (incomingEditReturnTime && returnStockInHistoryTime) {
+            const editTime = new Date(incomingEditReturnTime).getTime();
+            const historyTime = new Date(returnStockInHistoryTime).getTime();
+  
+            if (editTime >= historyTime) {
+              lastReturn = incomingEditReturnTime;
+              lastReturnRef = 'IER';
+            } else {
+              lastReturn = returnStockInHistoryTime;
+              lastReturnRef = 'TSH';
+            }
+          } else if (incomingEditReturnTime) {
+            lastReturn = incomingEditReturnTime;
+            lastReturnRef = 'IER';
+          } else if (returnStockInHistoryTime) {
+            lastReturn = returnStockInHistoryTime;
+            lastReturnRef = 'TSH';
+          }
   
           return {
             transactionStoreId: row.id,
@@ -134,6 +235,9 @@ module.exports = {
             area: row.Store?.name || '',
             stockNote: row.stockNote || '',
             notControl: row.Incoming?.notControl || '',
+            lastReturn: lastReturn,
+            lastReturnRef: lastReturnRef,
+            reInspectionDate: row.Incoming?.reInspectionDate || null,
             timeStmp: row.timeStmp,
             remark: row.Incoming?.remark || ''
           };
@@ -1001,6 +1105,316 @@ module.exports = {
         }
         return res.status(500).send({ error: e.message });
       } 
+    },
+
+
+
+    editLastReturn: async (req,res) =>{
+      try{ 
+        const {incomingId, lastReturn, userId} = req.body;
+
+        
+        if (incomingId == null || lastReturn == null || userId == null) {
+          return res.status(400).send({ message: 'missing_required_fields' });
+        }
+
+        const checkIncoming = await prisma.incoming.findFirst({
+          where: {
+            id: parseInt(incomingId),
+            status: 'use',
+          },
+        });
+
+        if (!checkIncoming) {
+          return res.status(400).send({ message: 'incoming_not_found' });
+        }
+
+
+
+        const lastReturnDate = new Date(lastReturn);
+
+        if (Number.isNaN(lastReturnDate.getTime())) {
+          return res.status(400).send({ message: 'invalid_lastReturn' });
+        }
+
+        const pad = (n) => String(n).padStart(2, '0');
+
+        const lastReturnText = `${pad(lastReturnDate.getDate())}/${pad(lastReturnDate.getMonth() + 1)}/${lastReturnDate.getFullYear()}`;
+
+
+        const results = await prisma.$transaction(async (tx) => {
+
+          const latestTransactionStore = await tx.transactionStore.findFirst({
+            where: {
+              incomingId: parseInt(incomingId),
+              status: 'use'
+            },
+            orderBy: [
+              { timeStmp: 'desc' },
+              { id: 'desc' }
+            ]
+          });
+
+          if (!latestTransactionStore) {
+            throw new Error('transaction_store_not_found');
+          }         
+          
+                 
+          const createIncomingEditReturn = await tx.incomingEditReturn.create({
+            data: {
+              incomingId: parseInt(incomingId),  
+              timeStmp: lastReturnDate
+            }
+          });
+
+          const createdHistory = await tx.transactionStoreHistory.create({
+            data: {
+              storeId: latestTransactionStore.storeId,
+              incomingId: latestTransactionStore.incomingId,
+              userId: parseInt(userId),
+              stockNote: latestTransactionStore.stockNote || '',
+              type: 'EditLastReturn',
+              coil: parseInt(checkIncoming.coil),
+              qty: parseFloat(checkIncoming.qtyKgsPcs)
+            }
+          });
+
+
+          const createLogEditLastReturn = await tx.logEditLastReturn.create({
+              data:{
+                historyId: parseInt(createdHistory.id),
+                lastReturn: lastReturnText ,
+                lastReturnId: parseInt(createIncomingEditReturn.id)
+              }
+          })
+
+          return {
+            createIncomingEditReturn,
+            createdHistory,
+            createLogEditLastReturn
+          };
+
+        })
+
+        return res.send({
+          message: 'success',
+          results
+        });
+
+      }catch(e){
+        if (
+          e.message === 'transaction_store_not_found'
+        ) {
+          return res.status(400).send({ message: e.message });
+        }
+        return res.status(500).send({ error: e.message });
+      }
+    },
+
+
+    deleteIncomingEditReturn: async (req,res)=> {
+      try{
+          const {incomingId, userId} = req.body;
+
+          if (incomingId == null  || userId == null) {
+            return res.status(400).send({ message: 'missing_required_fields' });
+          }
+
+
+
+          const checkIncoming = await prisma.incoming.findFirst({
+            where: {
+              id: parseInt(incomingId),
+              status: 'use',
+            },
+          });
+  
+          if (!checkIncoming) {
+            return res.status(400).send({ message: 'incoming_not_found' });
+          }
+
+
+          const results = await prisma.$transaction(async (tx) => {
+
+                const latestTransactionStore = await tx.transactionStore.findFirst({
+                  where: {
+                    incomingId: parseInt(incomingId),
+                    status: 'use'
+                  },
+                  orderBy: [
+                    { timeStmp: 'desc' },
+                    { id: 'desc' }
+                  ]
+                });
+      
+                if (!latestTransactionStore) {
+                  throw new Error('transaction_store_not_found');
+                }  
+
+                const deletEditReturn = await tx.incomingEditReturn.updateMany({
+                    where: { 
+                      incomingId : parseInt(incomingId),
+                      status: 'use' 
+                    },
+                    data:{
+                        status: 'delete'
+                    }
+                })
+                
+                const createdHistory = await tx.transactionStoreHistory.create({
+                  data: {
+                    storeId: latestTransactionStore.storeId,
+                    incomingId: latestTransactionStore.incomingId,
+                    userId: parseInt(userId),
+                    stockNote: latestTransactionStore.stockNote || '',
+                    type: 'DeleteLastReturn',
+                    coil: parseInt(checkIncoming.coil),
+                    qty: parseFloat(checkIncoming.qtyKgsPcs)
+                  }
+                });
+
+                return {
+                  latestTransactionStore,
+                  deletEditReturn,
+                  createdHistory
+                }; 
+          })
+
+          return res.send({
+            message: 'success',
+            results
+          });
+
+      }catch(e){
+        if (
+          e.message === 'transaction_store_not_found'
+        ) {
+          return res.status(400).send({ message: e.message });
+        }
+        return res.status(500).send({ error: e.message });
+
+      }
+    },
+
+
+    updateReInspection: async (req,res) =>{
+      try{
+          const {incomingId, userId, reInspection} = req.body;
+
+          
+          if (incomingId == null  || userId == null ) {
+            return res.status(400).send({ message: 'missing_required_fields' });
+          }
+
+
+
+          const checkIncoming = await prisma.incoming.findFirst({
+            where: {
+              id: parseInt(incomingId),
+              status: 'use',
+            },
+          });
+  
+          if (!checkIncoming) {
+            return res.status(400).send({ message: 'incoming_not_found' });
+          }
+
+
+          const pad = (n) => String(n).padStart(2, '0');
+
+          let reInspectionDate = null;
+          let reInspectionText = '';
+          
+          if (reInspection != null && String(reInspection).trim() !== '') {
+            reInspectionDate = new Date(reInspection);
+          
+            if (Number.isNaN(reInspectionDate.getTime())) {
+              return res.status(400).send({
+                message: 'invalid_reInspection'
+              });
+            }
+          
+            reInspectionText =
+              `${pad(reInspectionDate.getDate())}/` +
+              `${pad(reInspectionDate.getMonth() + 1)}/` +
+              `${reInspectionDate.getFullYear()}`;
+          }
+
+          
+
+          const results = await prisma.$transaction(async (tx) => {
+
+            const latestTransactionStore = await tx.transactionStore.findFirst({
+              where: {
+                incomingId: parseInt(incomingId),
+                status: 'use'
+              },
+              orderBy: [
+                { timeStmp: 'desc' },
+                { id: 'desc' }
+              ]
+            });
+  
+            if (!latestTransactionStore) {
+              throw new Error('transaction_store_not_found');
+            }
+
+            const editReInspection = await tx.incoming.update({
+              where: {
+                id: parseInt(incomingId),
+                status: 'use'
+              },
+              data: {
+                reInspectionDate: reInspectionDate
+              }
+            })
+
+
+
+            const createdHistory = await tx.transactionStoreHistory.create({
+              data: {
+                storeId: latestTransactionStore.storeId,
+                incomingId: latestTransactionStore.incomingId,
+                userId: parseInt(userId),
+                stockNote: latestTransactionStore.stockNote || '',
+                type: 'EditReInspection',
+                coil: parseInt(checkIncoming.coil),
+                qty: parseFloat(checkIncoming.qtyKgsPcs)
+              }
+            });
+
+
+            const createLogEditInSpection = await tx.logEditInSpection.create({
+              data:{
+                historyId: parseInt(createdHistory.id),
+                incomingId: parseInt(incomingId) ,
+                inSpection: reInspectionText
+              }
+            })
+
+            return {
+              latestTransactionStore,
+              editReInspection,
+              createdHistory,
+              createLogEditInSpection
+            }; 
+
+          })
+
+
+          return res.send({
+            message: 'success',
+            results
+          });
+
+      }catch(e){
+        if (
+          e.message === 'transaction_store_not_found'
+        ) {
+          return res.status(400).send({ message: e.message });
+        }
+        return res.status(500).send({ error: e.message });
+      }
     }
 
 
