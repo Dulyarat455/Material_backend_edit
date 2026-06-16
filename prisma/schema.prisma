@@ -192,6 +192,7 @@ model Material {
   materialSpec String
   accountCode String?
   timeStamp DateTime @default(now())
+  lineNo String?
   status String @default("use")
   Job Job[]
 }

@@ -255,491 +255,1055 @@ module.exports = {
   },
 
 
-     exportExcel: async (req, res) => {
-      try {
-        const chunkSize = 500;
-
-        const {
-          startDate,
-          endDate,
-          recivedDate,
-          jobNo,
-          materialNo,
-          itemName,
-          spec,
-          lotNo,
-          area,
-          notControl
-        } = req.body || {};
-
-        const where = {
-          status: 'use',
-
-          ...(startDate || endDate
-            ? {
-                timeStmp: {
-                  ...(startDate
-                    ? { gte: new Date(`${startDate}T00:00:00`) }
-                    : {}),
-                  ...(endDate
-                    ? { lte: new Date(`${endDate}T23:59:59.999`) }
-                    : {})
+  exportExcel: async (req, res) => {
+    try {
+      const chunkSize = 500;
+  
+      const {
+        startDate,
+        endDate,
+        recivedDate,
+        jobNo,
+        materialNo,
+        itemName,
+        spec,
+        lotNo,
+        area,
+        notControl
+      } = req.body || {};
+  
+      // =============================
+      // Helpers
+      // =============================
+  
+      const pad = (value) => String(value).padStart(2, '0');
+  
+      const parseInventoryDate = (value) => {
+        if (!value) return null;
+  
+        const text = String(value).trim();
+  
+        if (!text) return null;
+  
+        // รองรับ DD/MM/YYYY
+        const ddMMyyyyMatch = text.match(
+          /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+        );
+  
+        if (ddMMyyyyMatch) {
+          const day = Number(ddMMyyyyMatch[1]);
+          const month = Number(ddMMyyyyMatch[2]);
+          const year = Number(ddMMyyyyMatch[3]);
+  
+          const date = new Date(year, month - 1, day);
+  
+          if (
+            date.getFullYear() !== year ||
+            date.getMonth() !== month - 1 ||
+            date.getDate() !== day
+          ) {
+            return null;
+          }
+  
+          date.setHours(0, 0, 0, 0);
+          return date;
+        }
+  
+        // รองรับ ISO DateTime และ YYYY-MM-DD
+        const date = new Date(text);
+  
+        if (Number.isNaN(date.getTime())) {
+          return null;
+        }
+  
+        date.setHours(0, 0, 0, 0);
+  
+        return date;
+      };
+  
+      const formatDateOnly = (value) => {
+        const date = parseInventoryDate(value);
+  
+        if (!date) return '';
+  
+        return (
+          `${pad(date.getDate())}/` +
+          `${pad(date.getMonth() + 1)}/` +
+          `${date.getFullYear()}`
+        );
+      };
+  
+      const formatDateTime = (value) => {
+        if (!value) return '';
+  
+        const date = new Date(value);
+  
+        if (Number.isNaN(date.getTime())) {
+          return '';
+        }
+  
+        return date.toLocaleString('th-TH', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      };
+  
+      const getUpdateDate = ({
+        recivedDate,
+        lastReturn,
+        reInspectionDate
+      }) => {
+        const dateList = [
+          parseInventoryDate(recivedDate),
+          parseInventoryDate(lastReturn),
+          parseInventoryDate(reInspectionDate)
+        ].filter(date => date !== null);
+  
+        if (!dateList.length) {
+          return null;
+        }
+  
+        return dateList.reduce((latestDate, currentDate) => {
+          return currentDate.getTime() > latestDate.getTime()
+            ? currentDate
+            : latestDate;
+        });
+      };
+  
+      const getCalculateDays = (updateDate) => {
+        if (!updateDate) return null;
+  
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+  
+        const updateDateOnly = new Date(updateDate);
+        updateDateOnly.setHours(0, 0, 0, 0);
+  
+        const millisecondsPerDay = 1000 * 60 * 60 * 24;
+  
+        const difference =
+          today.getTime() - updateDateOnly.getTime();
+  
+        return Math.max(
+          0,
+          Math.floor(difference / millisecondsPerDay)
+        );
+      };
+  
+      const getTimeSortValue = (value) => {
+        if (!value) return 0;
+  
+        const date = new Date(value);
+  
+        if (Number.isNaN(date.getTime())) return 0;
+  
+        return date.getTime();
+      };
+  
+      // =============================
+      // Where
+      // =============================
+  
+      const where = {
+        status: 'use',
+  
+        ...(startDate || endDate
+          ? {
+              timeStmp: {
+                ...(startDate
+                  ? {
+                      gte: new Date(`${startDate}T00:00:00`)
+                    }
+                  : {}),
+  
+                ...(endDate
+                  ? {
+                      lte: new Date(`${endDate}T23:59:59.999`)
+                    }
+                  : {})
+              }
+            }
+          : {}),
+  
+        Incoming: {
+          is: {
+            status: 'use',
+  
+            ...(jobNo && jobNo !== 'all'
+              ? { jobNo }
+              : {}),
+  
+            ...(recivedDate && recivedDate !== 'all'
+              ? { recivedDate }
+              : {}),
+  
+            ...(materialNo && materialNo !== 'all'
+              ? { materialNo }
+              : {}),
+  
+            ...(itemName && itemName !== 'all'
+              ? { itemName }
+              : {}),
+  
+            ...(spec && spec !== 'all'
+              ? { itemSpec: spec }
+              : {}),
+  
+            ...(lotNo && lotNo !== 'all'
+              ? { lotNo }
+              : {}),
+  
+            ...(notControl === 'Not Control'
+              ? {
+                  notControl: 'yes'
+                }
+              : {}),
+  
+            ...(notControl === 'Control'
+              ? {
+                  OR: [
+                    {
+                      notControl: {
+                        not: 'yes'
+                      }
+                    },
+                    {
+                      notControl: null
+                    }
+                  ]
+                }
+              : {})
+          }
+        },
+  
+        ...(area && area !== 'all'
+          ? {
+              Store: {
+                is: {
+                  name: area
                 }
               }
-            : {}),
-
-          Incoming: {
-            is: {
-              status: 'use',
-              ...(jobNo && jobNo !== 'all' ? { jobNo } : {}),
-              ...(recivedDate && recivedDate !== 'all' ? { recivedDate } : {}),
-              ...(materialNo && materialNo !== 'all' ? { materialNo } : {}),
-              ...(itemName && itemName !== 'all' ? { itemName } : {}),
-              ...(spec && spec !== 'all' ? { itemSpec: spec } : {}),
-              ...(lotNo && lotNo !== 'all' ? { lotNo } : {}),
-
-              ...(notControl === 'Not Control'
-                ? {
-                    notControl: 'yes'
-                  }
-                : {}),
-
-              ...(notControl === 'Control'
-                ? {
-                    OR: [
-                      { notControl: { not: 'yes' } },
-                      { notControl: null }
-                    ]
-                  }
-                : {})
+            }
+          : {})
+      };
+  
+      // =============================
+      // Sort
+      // =============================
+  
+      const areaSortPriority = [
+        'Pending',
+  
+        '1101', '1102', '1103', '1104', '1105', '1106',
+        '1107', '1108', '1109', '1110', '1111',
+  
+        '1201', '1202', '1203', '1204', '1205', '1206',
+        '1207', '1208', '1209', '1210', '1211',
+  
+        '2101', '2102', '2103', '2104', '2105', '2106',
+  
+        '2201', '2202', '2203', '2204', '2205', '2206',
+  
+        '3101', '3102', '3103', '3104', '3105', '3106',
+  
+        '3201', '3202', '3203', '3204', '3205', '3206',
+  
+        'Chemical'
+      ];
+  
+      const getAreaSortIndex = (areaName) => {
+        const areaText = String(areaName || '').trim();
+  
+        const index = areaSortPriority.findIndex(
+          x => x.toLowerCase() === areaText.toLowerCase()
+        );
+  
+        return index >= 0 ? index : 9999;
+      };
+  
+      const sortInventoryRows = (rows) => {
+        return [...rows].sort((a, b) => {
+          // 1) Account Code 4520 มาก่อน
+          const accountA =
+            String(a.accountCode || '').trim() === '4520'
+              ? 0
+              : 1;
+  
+          const accountB =
+            String(b.accountCode || '').trim() === '4520'
+              ? 0
+              : 1;
+  
+          if (accountA !== accountB) {
+            return accountA - accountB;
+          }
+  
+          // 2) Control มาก่อน Not Control
+          const controlA = a.notControl === 'yes' ? 1 : 0;
+          const controlB = b.notControl === 'yes' ? 1 : 0;
+  
+          if (controlA !== controlB) {
+            return controlA - controlB;
+          }
+  
+          // 3) Item Name
+          const nameCompare = String(a.itemName || '').localeCompare(
+            String(b.itemName || ''),
+            undefined,
+            {
+              numeric: true,
+              sensitivity: 'base'
+            }
+          );
+  
+          if (nameCompare !== 0) {
+            return nameCompare;
+          }
+  
+          // 4) Item Spec
+          const specCompare = String(a.itemSpec || '').localeCompare(
+            String(b.itemSpec || ''),
+            undefined,
+            {
+              numeric: true,
+              sensitivity: 'base'
+            }
+          );
+  
+          if (specCompare !== 0) {
+            return specCompare;
+          }
+  
+          // 5) Area Priority
+          const areaA = getAreaSortIndex(a.area);
+          const areaB = getAreaSortIndex(b.area);
+  
+          if (areaA !== areaB) {
+            return areaA - areaB;
+          }
+  
+          const areaTextCompare = String(a.area || '').localeCompare(
+            String(b.area || ''),
+            undefined,
+            {
+              numeric: true,
+              sensitivity: 'base'
+            }
+          );
+  
+          if (areaTextCompare !== 0) {
+            return areaTextCompare;
+          }
+  
+          // 6) Time เก่า -> ใหม่
+          return (
+            getTimeSortValue(a.rawTimeStmp) -
+            getTimeSortValue(b.rawTimeStmp)
+          );
+        });
+      };
+  
+      // =============================
+      // Get all matching IDs
+      // =============================
+  
+      const idRows = await prisma.transactionStore.findMany({
+        where,
+        orderBy: {
+          id: 'desc'
+        },
+        select: {
+          id: true
+        }
+      });
+  
+      const allIds = idRows.map(row => row.id);
+  
+      // =============================
+      // Prepare Excel
+      // =============================
+  
+      const workbook = new ExcelJS.Workbook();
+  
+      const worksheet = workbook.addWorksheet(
+        'Inventory Report',
+        {
+          views: [
+            {
+              state: 'frozen',
+              ySplit: 1
+            }
+          ]
+        }
+      );
+  
+      worksheet.columns = [
+        {
+          header: 'Index',
+          key: 'index',
+          width: 10
+        },
+        {
+          header: 'Job No',
+          key: 'jobNo',
+          width: 20
+        },
+        {
+          header: 'Material No',
+          key: 'materialNo',
+          width: 22
+        },
+        {
+          header: 'Item Name',
+          key: 'itemName',
+          width: 28
+        },
+        {
+          header: 'Spec',
+          key: 'itemSpec',
+          width: 22
+        },
+        {
+          header: 'Invoice',
+          key: 'invoiceOne',
+          width: 20
+        },
+        {
+          header: 'Lot No',
+          key: 'lotNo',
+          width: 18
+        },
+        {
+          header: 'Coil',
+          key: 'coil',
+          width: 12
+        },
+        {
+          header: 'Qty Kgs/Pcs',
+          key: 'qtyKgsPcs',
+          width: 16
+        },
+        {
+          header: 'Unit',
+          key: 'unit',
+          width: 10
+        },
+        {
+          header: 'Unit Price',
+          key: 'unitPrice',
+          width: 16
+        },
+        {
+          header: 'Total Price',
+          key: 'totalPrice',
+          width: 16
+        },
+        {
+          header: 'Area',
+          key: 'area',
+          width: 14
+        },
+        {
+          header: 'Remark',
+          key: 'remark',
+          width: 28
+        },
+        {
+          header: 'Stock Note',
+          key: 'stockNote',
+          width: 28
+        },
+        {
+          header: 'Not Control',
+          key: 'notControlText',
+          width: 18
+        },
+        {
+          header: 'Time',
+          key: 'timeStmp',
+          width: 24
+        },
+        {
+          header: 'Received Date',
+          key: 'recivedDate',
+          width: 18
+        },
+        {
+          header: 'Last Return',
+          key: 'lastReturn',
+          width: 18
+        },
+        {
+          header: 'Reinspection',
+          key: 'reInspectionDate',
+          width: 18
+        },
+        {
+          header: 'Update',
+          key: 'updateDate',
+          width: 18
+        },
+        {
+          header: 'Calculate',
+          key: 'calculate',
+          width: 14
+        },
+        {
+          header: 'Judgement',
+          key: 'judgement',
+          width: 18
+        }
+      ];
+  
+      const headerRow = worksheet.getRow(1);
+  
+      headerRow.height = 22;
+  
+      headerRow.eachCell((cell) => {
+        cell.font = {
+          bold: true,
+          color: {
+            argb: 'FFFFFFFF'
+          },
+          size: 11
+        };
+  
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: 'center',
+          wrapText: true
+        };
+  
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: {
+            argb: 'FF5B8FC9'
+          }
+        };
+  
+        cell.border = {
+          top: {
+            style: 'thin',
+            color: {
+              argb: 'FF4A7DB7'
             }
           },
-
-          ...(area && area !== 'all'
-            ? {
-                Store: {
-                  is: {
-                    name: area
-                  }
-                }
-              }
-            : {})
+          left: {
+            style: 'thin',
+            color: {
+              argb: 'FFE5EEF7'
+            }
+          },
+          bottom: {
+            style: 'thin',
+            color: {
+              argb: 'FF4A7DB7'
+            }
+          },
+          right: {
+            style: 'thin',
+            color: {
+              argb: 'FFE5EEF7'
+            }
+          }
         };
-
-        const getTimeSortValue = (value) => {
-          if (!value) return 0;
-
-          const d = new Date(value);
-          if (Number.isNaN(d.getTime())) return 0;
-
-          return d.getTime();
-        };
-
-        const areaSortPriority = [
-          'Pending',
-          '1101', '1102', '1103', '1104', '1105', '1106',
-          '1107', '1108', '1109', '1110', '1111',
-          '1201', '1202', '1203', '1204', '1205', '1206',
-          '1207', '1208', '1209', '1210', '1211',
-          '2101', '2102', '2103', '2104', '2105', '2106',
-          '2201', '2202', '2203', '2204', '2205', '2206',
-          '3101', '3102', '3103', '3104', '3105', '3106',
-          '3201', '3202', '3203', '3204', '3205', '3206',
-          'Chemical'
-        ];
-
-        const getAreaSortIndex = (areaName) => {
-          const areaText = String(areaName || '').trim();
-
-          const index = areaSortPriority.findIndex(
-            x => x.toLowerCase() === areaText.toLowerCase()
-          );
-
-          return index >= 0 ? index : 9999;
-        };
-
-        const sortInventoryRows = (rows) => {
-          return [...rows].sort((a, b) => {
-            // 1) Account Code 4520 มาก่อนเสมอ
-            const accountA = String(a.accountCode || '').trim() === '4520' ? 0 : 1;
-            const accountB = String(b.accountCode || '').trim() === '4520' ? 0 : 1;
-
-            if (accountA !== accountB) {
-              return accountA - accountB;
-            }
-
-            // 2) Control มาก่อน Not Control
-            const controlA = a.notControl === 'yes' ? 1 : 0;
-            const controlB = b.notControl === 'yes' ? 1 : 0;
-
-            if (controlA !== controlB) {
-              return controlA - controlB;
-            }
-
-            // 3) Sort by Item Name
-            const nameCompare = String(a.itemName || '').localeCompare(
-              String(b.itemName || ''),
-              undefined,
-              {
-                numeric: true,
-                sensitivity: 'base'
-              }
-            );
-
-            if (nameCompare !== 0) {
-              return nameCompare;
-            }
-
-            // 4) Sort by Item Spec
-            const specCompare = String(a.itemSpec || '').localeCompare(
-              String(b.itemSpec || ''),
-              undefined,
-              {
-                numeric: true,
-                sensitivity: 'base'
-              }
-            );
-
-            if (specCompare !== 0) {
-              return specCompare;
-            }
-
-            // 5) Sort by Area Priority
-            const areaA = getAreaSortIndex(a.area);
-            const areaB = getAreaSortIndex(b.area);
-
-            if (areaA !== areaB) {
-              return areaA - areaB;
-            }
-
-            // Area ที่ไม่อยู่ใน priority list ให้เรียง A-Z ต่อ
-            const areaTextCompare = String(a.area || '').localeCompare(
-              String(b.area || ''),
-              undefined,
-              {
-                numeric: true,
-                sensitivity: 'base'
-              }
-            );
-
-            if (areaTextCompare !== 0) {
-              return areaTextCompare;
-            }
-
-            // 6) ถ้ายังเท่ากัน ค่อยเรียงตามเวลาเก่า -> ใหม่
-            return getTimeSortValue(a.rawTimeStmp) - getTimeSortValue(b.rawTimeStmp);
-          });
-        };
-
-        // =============================
-        // 1) Get all matching ids first
-        // =============================
-        const idRows = await prisma.transactionStore.findMany({
-          where,
+      });
+  
+      // =============================
+      // Fetch data by chunk
+      // =============================
+  
+      const exportRows = [];
+  
+      for (let i = 0; i < allIds.length; i += chunkSize) {
+        const chunkIds = allIds.slice(i, i + chunkSize);
+  
+        const chunkRows = await prisma.transactionStore.findMany({
+          where: {
+            id: {
+              in: chunkIds
+            },
+            ...where
+          },
           orderBy: {
             id: 'desc'
           },
-          select: {
-            id: true
-          }
-        });
-
-        const allIds = idRows.map(x => x.id);
-
-        // =============================
-        // 2) Prepare Excel
-        // =============================
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Inventory Report', {
-          views: [{ state: 'frozen', ySplit: 1 }]
-        });
-
-        worksheet.columns = [
-          { header: 'Job No', key: 'jobNo', width: 20 },
-          { header: 'Received Date', key: 'recivedDate', width: 18 },
-          { header: 'Material No', key: 'materialNo', width: 22 },
-          { header: 'Item Name', key: 'itemName', width: 28 },
-          { header: 'Spec', key: 'itemSpec', width: 22 },
-          { header: 'Invoice', key: 'invoiceOne', width: 20 },
-          { header: 'Lot No', key: 'lotNo', width: 18 },
-          { header: 'Coil', key: 'coil', width: 12 },
-          { header: 'Qty Kgs/Pcs', key: 'qtyKgsPcs', width: 16 },
-          { header: 'Unit', key: 'unit', width: 10 },
-          { header: 'Unit Price', key: 'unitPrice', width: 16 },
-          { header: 'Total Price', key: 'totalPrice', width: 16 },
-          { header: 'Area', key: 'area', width: 14 },
-          { header: 'Remark', key: 'remark', width: 28 },
-          { header: 'Stock Note', key: 'stockNote', width: 28 },
-          { header: 'Not Control', key: 'notControlText', width: 18 },
-          { header: 'Time', key: 'timeStmp', width: 24 }
-        ];
-
-        const headerRow = worksheet.getRow(1);
-        headerRow.height = 22;
-
-        headerRow.eachCell((cell) => {
-          cell.font = {
-            bold: true,
-            color: { argb: 'FFFFFFFF' },
-            size: 11
-          };
-
-          cell.alignment = {
-            vertical: 'middle',
-            horizontal: 'center',
-            wrapText: true
-          };
-
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FF5B8FC9' }
-          };
-
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FF4A7DB7' } },
-            left: { style: 'thin', color: { argb: 'FFE5EEF7' } },
-            bottom: { style: 'thin', color: { argb: 'FF4A7DB7' } },
-            right: { style: 'thin', color: { argb: 'FFE5EEF7' } }
-          };
-        });
-
-        // =============================
-        // 3) Fetch data by chunks
-        //    เก็บเข้า exportRows ก่อน ยังไม่ addRow
-        // =============================
-        const exportRows = [];
-
-        for (let i = 0; i < allIds.length; i += chunkSize) {
-          const chunkIds = allIds.slice(i, i + chunkSize);
-
-          const chunkRows = await prisma.transactionStore.findMany({
-            where: {
-              id: {
-                in: chunkIds
-              },
-              ...where
+          include: {
+            Incoming: {
+              select: {
+                id: true,
+                jobNo: true,
+                recivedDate: true,
+                materialNo: true,
+                remark: true,
+                itemName: true,
+                itemSpec: true,
+                invoiceOne: true,
+                lotNo: true,
+                coil: true,
+                qtyKgsPcs: true,
+                unit: true,
+                unitPrice: true,
+                notControl: true,
+                reInspectionDate: true
+              }
             },
-            orderBy: {
-              id: 'desc'
-            },
-            include: {
-              Incoming: {
-                select: {
-                  id: true,
-                  jobNo: true,
-                  recivedDate: true,
-                  materialNo: true,
-                  remark: true,
-                  itemName: true,
-                  itemSpec: true,
-                  invoiceOne: true,
-                  lotNo: true,
-                  coil: true,
-                  qtyKgsPcs: true,
-                  unit: true,
-                  unitPrice: true,
-                  notControl: true
-                }
-              },
-              Store: {
-                select: {
-                  id: true,
-                  name: true
-                }
+            Store: {
+              select: {
+                id: true,
+                name: true
               }
             }
+          }
+        });
+  
+        // =============================
+        // Material Account Code
+        // =============================
+  
+        const materialNos = Array.from(
+          new Set(
+            chunkRows
+              .map(row => row.Incoming?.materialNo)
+              .filter(
+                value =>
+                  value != null &&
+                  String(value).trim() !== ''
+              )
+              .map(value => String(value).trim())
+          )
+        );
+  
+        const materialMap = new Map();
+  
+        if (materialNos.length) {
+          const materialRows = await prisma.material.findMany({
+            where: {
+              materialNo: {
+                in: materialNos
+              },
+              status: 'use'
+            },
+            select: {
+              materialNo: true,
+              accountCode: true
+            }
           });
-
-          // ดึง accountCode จาก Material ด้วย materialNo
-          const materialNos = Array.from(
-            new Set(
-              chunkRows
-                .map(row => row.Incoming?.materialNo)
-                .filter(x => x != null && String(x).trim() !== '')
-                .map(x => String(x).trim())
-            )
-          );
-
-          let materialMap = new Map();
-
-          if (materialNos.length) {
-            const materialRows = await prisma.material.findMany({
+  
+          for (const material of materialRows) {
+            materialMap.set(
+              String(material.materialNo || '').trim(),
+              material
+            );
+          }
+        }
+  
+        // =============================
+        // Incoming IDs สำหรับ Last Return
+        // =============================
+  
+        const incomingIds = Array.from(
+          new Set(
+            chunkRows
+              .map(row => row.incomingId)
+              .filter(id => id != null)
+              .map(id => Number(id))
+          )
+        );
+  
+        const incomingEditReturnMap = new Map();
+        const returnStockInHistoryMap = new Map();
+  
+        if (incomingIds.length) {
+          // Latest IncomingEditReturn
+          const incomingEditReturnRows =
+            await prisma.incomingEditReturn.findMany({
               where: {
-                materialNo: {
-                  in: materialNos
+                incomingId: {
+                  in: incomingIds
                 },
                 status: 'use'
               },
+              orderBy: [
+                {
+                  timeStmp: 'desc'
+                },
+                {
+                  id: 'desc'
+                }
+              ],
               select: {
-                materialNo: true,
-                accountCode: true
+                id: true,
+                incomingId: true,
+                timeStmp: true
               }
             });
-
-            materialMap = new Map(
-              materialRows.map(x => [
-                String(x.materialNo || '').trim(),
-                x
-              ])
-            );
+  
+          for (const editRow of incomingEditReturnRows) {
+            if (
+              !incomingEditReturnMap.has(
+                editRow.incomingId
+              )
+            ) {
+              incomingEditReturnMap.set(
+                editRow.incomingId,
+                editRow.timeStmp
+              );
+            }
           }
-
-          for (const row of chunkRows) {
-            const qtyKgsPcs = Number(row.Incoming?.qtyKgsPcs || 0);
-            const unitPrice = Number(row.Incoming?.unitPrice || 0);
-            const totalPrice = qtyKgsPcs * unitPrice;
-
-            const materialNoText = String(row.Incoming?.materialNo || '').trim();
-            const materialMaster = materialMap.get(materialNoText);
-
-            exportRows.push({
-              jobNo: row.Incoming?.jobNo || '',
-              recivedDate: row.Incoming?.recivedDate || '',
-              materialNo: materialNoText,
-              itemName: row.Incoming?.itemName || '',
-              itemSpec: row.Incoming?.itemSpec || '',
-              invoiceOne: row.Incoming?.invoiceOne || '',
-              lotNo: row.Incoming?.lotNo || '',
-              accountCode: materialMaster?.accountCode || '',
-              coil: Number(row.Incoming?.coil || 0),
-              qtyKgsPcs,
-              unit: row.Incoming?.unit || '',
-              unitPrice,
-              totalPrice,
-              area: row.Store?.name || '',
-              remark: row.Incoming?.remark || '',
-              stockNote: row.stockNote || '',
-              notControl: row.Incoming?.notControl || '',
-
-              // ใช้แสดงใน Excel
-              timeStmp: row.timeStmp
-                ? new Date(row.timeStmp).toLocaleString('th-TH', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                  })
-                : '',
-
-              // ใช้สำหรับ sort เท่านั้น
-              rawTimeStmp: row.timeStmp
-            });
-          }
-        }
-
-        // =============================
-        // 4) Sort by Account Code, Control, Material Name, Spec, Area Priority
-        // =============================
-        const sortedRows = sortInventoryRows(exportRows);
-
-        let excelRowIndex = 2;
-
-        for (const item of sortedRows) {
-          const excelRow = worksheet.addRow({
-            jobNo: item.jobNo,
-            recivedDate: item.recivedDate,
-            materialNo: item.materialNo,
-            itemName: item.itemName,
-            itemSpec: item.itemSpec,
-            invoiceOne: item.invoiceOne,
-            lotNo: item.lotNo,
-            coil: item.coil,
-            qtyKgsPcs: item.qtyKgsPcs,
-            unit: item.unit,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            area: item.area,
-            remark: item.remark,
-            stockNote: item.stockNote,
-            notControlText: item.notControl === 'yes' ? 'Not Control' : '',
-            timeStmp: item.timeStmp
-          });
-
-          const isBlueRow = excelRowIndex % 2 === 0;
-          const bgColor = isBlueRow ? 'FFDBE7F3' : 'FFFFFFFF';
-
-          excelRow.height = 22;
-
-          excelRow.eachCell((cell, colNumber) => {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: bgColor }
-            };
-
-            cell.border = {
-              top: { style: 'thin', color: { argb: 'FFB8C9DC' } },
-              left: { style: 'thin', color: { argb: 'FFB8C9DC' } },
-              bottom: { style: 'thin', color: { argb: 'FFB8C9DC' } },
-              right: { style: 'thin', color: { argb: 'FFB8C9DC' } }
-            };
-
-            cell.alignment = {
-              vertical: 'middle',
-              horizontal:
-                colNumber === 7 || colNumber === 16
-                  ? 'center'
-                  : colNumber === 8 || colNumber === 9 || colNumber === 11 || colNumber === 12
-                  ? 'right'
-                  : 'left',
-              wrapText: true
-            };
-
-            cell.font = {
-              size: 12,
-              bold:
-                colNumber === 1 ||
-                colNumber === 3 ||
-                colNumber === 10 ||
-                colNumber === 11,
-              color: {
-                argb:
-                  colNumber === 1 ||
-                  colNumber === 2 ||
-                  colNumber === 10 ||
-                  colNumber === 11
-                    ? 'FF0F172A'
-                    : 'FF334155'
+  
+          // Latest TransactionStoreHistory ReturnStockIn
+          const returnStockInRows =
+            await prisma.transactionStoreHistory.findMany({
+              where: {
+                incomingId: {
+                  in: incomingIds
+                },
+                type: 'ReturnStockIn',
+                status: 'use'
+              },
+              orderBy: [
+                {
+                  timeStmp: 'desc'
+                },
+                {
+                  id: 'desc'
+                }
+              ],
+              select: {
+                id: true,
+                incomingId: true,
+                timeStmp: true
               }
-            };
-          });
-
-          excelRowIndex++;
+            });
+  
+          for (const historyRow of returnStockInRows) {
+            if (
+              !returnStockInHistoryMap.has(
+                historyRow.incomingId
+              )
+            ) {
+              returnStockInHistoryMap.set(
+                historyRow.incomingId,
+                historyRow.timeStmp
+              );
+            }
+          }
         }
-
+  
         // =============================
-        // 5) Number format
+        // Map rows
         // =============================
-        worksheet.getColumn('coil').numFmt = '#,##0';
-        worksheet.getColumn('qtyKgsPcs').numFmt = '#,##0.###';
-        worksheet.getColumn('unitPrice').numFmt = '#,##0.00';
-        worksheet.getColumn('totalPrice').numFmt = '#,##0';
-
-        worksheet.autoFilter = {
-          from: 'A1',
-          to: 'Q1'
-        };
-
-        res.setHeader(
-          'Content-Type',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        );
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename=inventory_report_${Date.now()}.xlsx`
-        );
-
-        await workbook.xlsx.write(res);
-        return res.end();
-      } catch (e) {
-        return res.status(500).send({ error: e.message });
+  
+        for (const row of chunkRows) {
+          const incomingId = Number(row.incomingId);
+  
+          const qtyKgsPcs = Number(
+            row.Incoming?.qtyKgsPcs || 0
+          );
+  
+          const unitPrice = Number(
+            row.Incoming?.unitPrice || 0
+          );
+  
+          const totalPrice = qtyKgsPcs * unitPrice;
+  
+          const materialNoText = String(
+            row.Incoming?.materialNo || ''
+          ).trim();
+  
+          const materialMaster =
+            materialMap.get(materialNoText);
+  
+          const incomingEditReturnTime =
+            incomingEditReturnMap.get(incomingId) || null;
+  
+          const returnStockInHistoryTime =
+            returnStockInHistoryMap.get(incomingId) || null;
+  
+          let lastReturn = null;
+  
+          if (
+            incomingEditReturnTime &&
+            returnStockInHistoryTime
+          ) {
+            const editTime = new Date(
+              incomingEditReturnTime
+            ).getTime();
+  
+            const historyTime = new Date(
+              returnStockInHistoryTime
+            ).getTime();
+  
+            lastReturn =
+              editTime >= historyTime
+                ? incomingEditReturnTime
+                : returnStockInHistoryTime;
+          } else if (incomingEditReturnTime) {
+            lastReturn = incomingEditReturnTime;
+          } else if (returnStockInHistoryTime) {
+            lastReturn = returnStockInHistoryTime;
+          }
+  
+          const reInspectionDate =
+            row.Incoming?.reInspectionDate || null;
+  
+          const updateDate = getUpdateDate({
+            recivedDate: row.Incoming?.recivedDate,
+            lastReturn,
+            reInspectionDate
+          });
+  
+          const calculate = getCalculateDays(updateDate);
+  
+          const judgement =
+            calculate != null && calculate >= 365
+              ? 'Reinspection'
+              : '';
+  
+          exportRows.push({
+            jobNo: row.Incoming?.jobNo || '',
+            materialNo: materialNoText,
+            itemName: row.Incoming?.itemName || '',
+            itemSpec: row.Incoming?.itemSpec || '',
+            invoiceOne: row.Incoming?.invoiceOne || '',
+            lotNo: row.Incoming?.lotNo || '',
+  
+            accountCode:
+              materialMaster?.accountCode || '',
+  
+            coil: Number(row.Incoming?.coil || 0),
+            qtyKgsPcs,
+            unit: row.Incoming?.unit || '',
+            unitPrice,
+            totalPrice,
+  
+            area: row.Store?.name || '',
+            remark: row.Incoming?.remark || '',
+            stockNote: row.stockNote || '',
+            notControl:
+              row.Incoming?.notControl || '',
+  
+            timeStmp: formatDateTime(row.timeStmp),
+  
+            recivedDate:
+              row.Incoming?.recivedDate || '',
+  
+            lastReturn:
+              formatDateOnly(lastReturn),
+  
+            reInspectionDate:
+              formatDateOnly(reInspectionDate),
+  
+            updateDate:
+              formatDateOnly(updateDate),
+  
+            calculate:
+              calculate == null
+                ? ''
+                : calculate,
+  
+            judgement,
+  
+            rawTimeStmp: row.timeStmp
+          });
+        }
       }
-    },
-
-
+  
+      // =============================
+      // Sort
+      // =============================
+  
+      const sortedRows = sortInventoryRows(exportRows);
+  
+      // =============================
+      // Add rows to Excel
+      // =============================
+  
+      let excelRowIndex = 2;
+      let displayIndex = 1;
+  
+      for (const item of sortedRows) {
+        const excelRow = worksheet.addRow({
+          index: displayIndex,
+          jobNo: item.jobNo,
+          materialNo: item.materialNo,
+          itemName: item.itemName,
+          itemSpec: item.itemSpec,
+          invoiceOne: item.invoiceOne,
+          lotNo: item.lotNo,
+          coil: item.coil,
+          qtyKgsPcs: item.qtyKgsPcs,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          area: item.area,
+          remark: item.remark,
+          stockNote: item.stockNote,
+  
+          notControlText:
+            item.notControl === 'yes'
+              ? 'Not Control'
+              : '',
+  
+          timeStmp: item.timeStmp,
+          recivedDate: item.recivedDate,
+          lastReturn: item.lastReturn,
+          reInspectionDate: item.reInspectionDate,
+          updateDate: item.updateDate,
+          calculate: item.calculate,
+          judgement: item.judgement
+        });
+  
+        const isBlueRow = excelRowIndex % 2 === 0;
+  
+        const bgColor = isBlueRow
+          ? 'FFDBE7F3'
+          : 'FFFFFFFF';
+  
+        excelRow.height = 22;
+  
+        excelRow.eachCell((cell, colNumber) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: {
+              argb: bgColor
+            }
+          };
+  
+          cell.border = {
+            top: {
+              style: 'thin',
+              color: {
+                argb: 'FFB8C9DC'
+              }
+            },
+            left: {
+              style: 'thin',
+              color: {
+                argb: 'FFB8C9DC'
+              }
+            },
+            bottom: {
+              style: 'thin',
+              color: {
+                argb: 'FFB8C9DC'
+              }
+            },
+            right: {
+              style: 'thin',
+              color: {
+                argb: 'FFB8C9DC'
+              }
+            }
+          };
+  
+          const centerColumns = [
+            1, 7, 10, 16, 18, 19, 20, 21, 22, 23
+          ];
+  
+          const rightColumns = [
+            8, 9, 11, 12
+          ];
+  
+          cell.alignment = {
+            vertical: 'middle',
+  
+            horizontal: centerColumns.includes(colNumber)
+              ? 'center'
+              : rightColumns.includes(colNumber)
+              ? 'right'
+              : 'left',
+  
+            wrapText: true
+          };
+  
+          cell.font = {
+            size: 12,
+  
+            bold: [
+              1, 2, 3, 10, 11, 12
+            ].includes(colNumber),
+  
+            color: {
+              argb: [
+                1, 2, 3, 10, 11, 12
+              ].includes(colNumber)
+                ? 'FF0F172A'
+                : 'FF334155'
+            }
+          };
+        });
+  
+        // Judgement เป็นสีแดง
+        if (item.judgement === 'Reinspection') {
+          const judgementCell = excelRow.getCell(23);
+  
+          judgementCell.font = {
+            size: 12,
+            bold: true,
+            color: {
+              argb: 'FFDC2626'
+            }
+          };
+  
+          judgementCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: {
+              argb: 'FFFEE2E2'
+            }
+          };
+        }
+  
+        excelRowIndex++;
+        displayIndex++;
+      }
+  
+      // =============================
+      // Number Format
+      // =============================
+  
+      worksheet.getColumn('index').numFmt = '#,##0';
+      worksheet.getColumn('coil').numFmt = '#,##0';
+      worksheet.getColumn('qtyKgsPcs').numFmt = '#,##0.###';
+      worksheet.getColumn('unitPrice').numFmt = '#,##0.00';
+      worksheet.getColumn('totalPrice').numFmt = '#,##0';
+      worksheet.getColumn('calculate').numFmt = '#,##0';
+  
+      // A ถึง W = 23 Columns
+      worksheet.autoFilter = {
+        from: 'A1',
+        to: 'W1'
+      };
+  
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+  
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=inventory_report_${Date.now()}.xlsx`
+      );
+  
+      await workbook.xlsx.write(res);
+  
+      return res.end();
+    } catch (e) {
+      console.error('exportExcel error:', e);
+  
+      return res.status(500).send({
+        error: e.message
+      });
+    }
+  },
 
       
       editStockNote: async (req, res) => {
@@ -1340,7 +1904,7 @@ module.exports = {
               `${reInspectionDate.getFullYear()}`;
           }
 
-          
+
 
           const results = await prisma.$transaction(async (tx) => {
 
