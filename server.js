@@ -215,6 +215,113 @@ app.post('/api/graph/saveInventory',(req, res) => graphController.saveInventory(
 
 
 
+/* =====================================================
+   DAILY INVENTORY SCHEDULER
+===================================================== */
+
+let inventorySchedulerRunning = false;
+let inventorySchedulerLastDate = '';
+
+function getBangkokDateTime() {
+  const now = new Date();
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(now);
+
+  const getPart = (type) => {
+    return parts.find(item => item.type === type)?.value || '';
+  };
+
+  return {
+    now,
+    year: getPart('year'),
+    month: getPart('month'),
+    day: getPart('day'),
+    hour: Number(getPart('hour')),
+    minute: Number(getPart('minute')),
+    second: Number(getPart('second'))
+  };
+}
+
+async function checkDailyInventorySchedule() {
+  const bangkok = getBangkokDateTime();
+
+  const dateKey =
+    `${bangkok.year}-${bangkok.month}-${bangkok.day}`;
+
+  const targetHour = 15;
+  const startMinute = 1;
+  const endMinute = 4;
+
+  const isInRunWindow =
+    bangkok.hour === targetHour &&
+    bangkok.minute >= startMinute &&
+    bangkok.minute <= endMinute;
+
+  if (!isInRunWindow) {
+    return;
+  }
+
+  if (
+    inventorySchedulerRunning ||
+    inventorySchedulerLastDate === dateKey
+  ) {
+    return;
+  }
+
+  inventorySchedulerRunning = true;
+
+  try {
+    console.log(
+      '[Inventory Scheduler] Starting:',
+      dateKey
+    );
+
+    const results =
+      await graphController.saveInventorySnapshot(
+        bangkok.now
+      );
+
+    inventorySchedulerLastDate = dateKey;
+
+    console.log(
+      '[Inventory Scheduler] Completed:',
+      results
+    );
+  } catch (error) {
+    console.error(
+      '[Inventory Scheduler] Failed:',
+      error
+    );
+  } finally {
+    inventorySchedulerRunning = false;
+  }
+}
+
+function startInventoryScheduler() {
+  console.log(
+    '[Inventory Scheduler] Active: 07:00-07:09 Asia/Bangkok'
+  );
+
+  checkDailyInventorySchedule();
+
+  setInterval(() => {
+    checkDailyInventorySchedule();
+  }, 30 * 1000);
+}
+
+startInventoryScheduler();
+
+
+
 // server.listen(3007, ()=>{
 //     console.log("API Server Running...");
 // })

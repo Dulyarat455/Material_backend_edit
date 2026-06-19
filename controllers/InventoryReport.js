@@ -91,7 +91,8 @@ module.exports = {
             },
             select: {
               materialNo: true,
-              accountCode: true
+              accountCode: true,
+              lineNo: true
             }
           });
   
@@ -225,6 +226,7 @@ module.exports = {
             lotNo: row.Incoming?.lotNo || '',
   
             accountCode: materialMaster?.accountCode || '',
+            lineNo: materialMaster?.lineNo || '',
   
             coil: Number(row.Incoming?.coil || 0),
             qtyKgsPcs: qtyKgsPcs,
