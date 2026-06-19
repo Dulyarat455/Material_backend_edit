@@ -324,6 +324,17 @@ model LogEditInSpection {
 }
 
 
+model RecordInventory {
+  id Int @id() @default(autoincrement())
+  incomingId Int
+  storeId Int
+  coil Int
+  qty Float
+  totalPrice Float
+  lineNo String
+  timeStmp DateTime 
+}
+
 
 
 

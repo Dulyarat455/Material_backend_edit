@@ -18,7 +18,7 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   'http://10.121.50.174:4200', // 👈 ใส่ IP เครื่อง Server notebook
+   'http://10.121.50.124:4200', // 👈 ใส่ IP เครื่อง Server notebook
   // 'http://10.121.1.85'// เครื่อง server จริง
 
 ];
@@ -39,6 +39,10 @@ const stockOutReportController = require('./controllers/StockOutReport');
 const transactionJobController = require('./controllers/TransactionJobReport');
 const transactionStoreController = require('./controllers/TransactionStoreReport');
 const transactionAllController = require('./controllers/TransactionAllReport');
+const graphController = require('./controllers/graphController');
+
+
+
 
 
 app.use(cors({
@@ -204,6 +208,10 @@ app.get('/api/transactionAll/list',(req, res) => transactionAllController.list(r
 app.post('/api/transactionAll/exportExcel',(req, res) => transactionAllController.exportExcel(req,res))
 
 
+
+//Graph
+
+app.post('/api/graph/saveInventory',(req, res) => graphController.saveInventory(req,res))
 
 
 

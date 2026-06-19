@@ -78,18 +78,68 @@ module.exports = {
 
    
     list: async (req, res) => {
-      try{
-          const rows = await prisma.material.findMany({
-              where: {
-                status: 'use'
-              }
-          })
-          return res.send({ results: rows })
-  
-      }catch(e){
-          return res.status(500).send({ error: e.message });
+      try {
+        const chunkSize = 500;
+        const results = [];
+    
+        // 1) ดึงเฉพาะ id ทั้งหมดก่อน
+        const idRows = await prisma.material.findMany({
+          where: {
+            status: 'use'
+          },
+          orderBy: {
+            id: 'desc'
+          },
+          select: {
+            id: true
+          }
+        });
+    
+        const allIds = idRows.map(row => row.id);
+    
+        // 2) ดึงข้อมูลจริงทีละ 500 records
+        for (let i = 0; i < allIds.length; i += chunkSize) {
+          const chunkIds = allIds.slice(i, i + chunkSize);
+    
+          const chunkRows = await prisma.material.findMany({
+            where: {
+              id: {
+                in: chunkIds
+              },
+              status: 'use'
+            },
+            orderBy: {
+              id: 'desc'
+            },
+            select: {
+              id: true,
+              materialNo: true,
+              materialName: true,
+              materialSpec: true,
+              accountCode: true,
+              lineNo: true,
+              timeStamp: true,
+              status: true
+            }
+          });
+    
+          results.push(...chunkRows);
+        }
+    
+        return res.send({
+          results,
+          total: results.length,
+          chunkSize,
+          totalChunks: Math.ceil(allIds.length / chunkSize)
+        });
+      } catch (e) {
+        console.error('Material list error:', e);
+    
+        return res.status(500).send({
+          message: 'load_material_list_failed',
+          error: e.message
+        });
       }
-  
     },
 
 
@@ -313,11 +363,21 @@ module.exports = {
           });
         }
     
+        // ใช้ข้อมูลของปีก่อน
         const currentYear = new Date().getFullYear();
         const targetYear = currentYear - 1;
-        const requestUrl = `${baseUrl}${targetYear}`;
     
-        console.log('PBASS Material Master requestUrl =', requestUrl);
+        // ป้องกันกรณี URL ลงท้ายด้วย /
+        const normalizedBaseUrl = baseUrl.endsWith('/')
+          ? baseUrl
+          : `${baseUrl}/`;
+    
+        const requestUrl = `${normalizedBaseUrl}${targetYear}`;
+    
+        console.log(
+          'PBASS Material Master requestUrl =',
+          requestUrl
+        );
     
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     
@@ -341,6 +401,7 @@ module.exports = {
         }
     
         let data;
+    
         try {
           data = JSON.parse(rawText);
         } catch (parseError) {
@@ -352,10 +413,18 @@ module.exports = {
           });
         }
     
-        const rows = Array.isArray(data?.Data) ? data.Data : [];
+        const rows = Array.isArray(data?.Data)
+          ? data.Data
+          : [];
     
-        const toText = (v) => {
-          return v == null ? '' : String(v).trim();
+        // =========================
+        // Helper functions
+        // =========================
+    
+        const toText = (value) => {
+          return value == null
+            ? ''
+            : String(value).trim();
         };
     
         const chunkArray = (arr, size) => {
@@ -369,16 +438,40 @@ module.exports = {
         };
     
         const toPbassUpdateTime = (item) => {
-          const dateText = toText(item.latestUpdateDate || item.LATEST_UPDATE_DATE);
-          const timeText = toText(item.latestUpdateTime || item.LATEST_UPDATE_TIME) || '00:00:00';
+          const dateText = toText(
+            item.latestUpdateDate ||
+            item.LATEST_UPDATE_DATE
+          );
     
-          if (!dateText) return 0;
+          const timeText =
+            toText(
+              item.latestUpdateTime ||
+              item.LATEST_UPDATE_TIME
+            ) || '00:00:00';
     
-          const d = new Date(`${dateText.replace(/\//g, '-')}T${timeText}`);
-          const t = d.getTime();
+          if (!dateText) {
+            return 0;
+          }
     
-          return Number.isNaN(t) ? 0 : t;
+          const normalizedDate = dateText.replace(
+            /\//g,
+            '-'
+          );
+    
+          const date = new Date(
+            `${normalizedDate}T${timeText}`
+          );
+    
+          const time = date.getTime();
+    
+          return Number.isNaN(time)
+            ? 0
+            : time;
         };
+    
+        // =========================
+        // Allowed filters
+        // =========================
     
         const allowedAccountCodes = new Set([
           '4520',
@@ -387,19 +480,38 @@ module.exports = {
           '4605-C'
         ]);
     
+        const allowedLineNos = new Set([
+          'LAM',
+          'GEN'
+        ]);
+    
+        // =========================
+        // Normalize and filter rows
+        // =========================
+    
         const normalizedRows = [];
+    
         let invalidMaterialNoCount = 0;
         let filteredOutAccountCount = 0;
+        let filteredOutLineNoCount = 0;
     
         const accountSummary = new Map();
+        const lineNoSummary = new Map();
     
         for (const item of rows) {
           const materialNo = toText(item.ITEM_NO);
           const accountCode = toText(item.ACCOUNT);
+          const lineNo = toText(item.LINE_NO).toUpperCase();
     
+          // Summary ของข้อมูลทั้งหมดจาก API
           accountSummary.set(
             accountCode || '-',
             (accountSummary.get(accountCode || '-') || 0) + 1
+          );
+    
+          lineNoSummary.set(
+            lineNo || '-',
+            (lineNoSummary.get(lineNo || '-') || 0) + 1
           );
     
           if (!materialNo) {
@@ -407,8 +519,15 @@ module.exports = {
             continue;
           }
     
+          // ACCOUNT ต้องอยู่ในรายการที่กำหนด
           if (!allowedAccountCodes.has(accountCode)) {
             filteredOutAccountCount++;
+            continue;
+          }
+    
+          // LINE_NO ต้องเป็น LAM หรือ GEN
+          if (!allowedLineNos.has(lineNo)) {
+            filteredOutLineNoCount++;
             continue;
           }
     
@@ -417,15 +536,27 @@ module.exports = {
             materialName: toText(item.ITEM_NAME),
             materialSpec: toText(item.SPEC),
             accountCode,
-            latestUpdateDate: toText(item.LATEST_UPDATE_DATE),
-            latestUpdateTime: toText(item.LATEST_UPDATE_TIME)
+            lineNo,
+            latestUpdateDate: toText(
+              item.LATEST_UPDATE_DATE
+            ),
+            latestUpdateTime: toText(
+              item.LATEST_UPDATE_TIME
+            )
           });
         }
     
+        // =========================
+        // Remove duplicate ITEM_NO
+        // เลือกรายการที่ update ล่าสุดจาก PBASS
+        // =========================
+    
         const uniqueMap = new Map();
+    
         let duplicateInPayloadCount = 0;
-        const duplicateInPayloadSample = [];
         let replacedByLatestCount = 0;
+    
+        const duplicateInPayloadSample = [];
     
         for (const item of normalizedRows) {
           const mapKey = item.materialNo;
@@ -438,62 +569,107 @@ module.exports = {
           duplicateInPayloadCount++;
     
           if (duplicateInPayloadSample.length < 30) {
-            duplicateInPayloadSample.push(item);
+            duplicateInPayloadSample.push({
+              materialNo: item.materialNo,
+              materialName: item.materialName,
+              materialSpec: item.materialSpec,
+              accountCode: item.accountCode,
+              lineNo: item.lineNo,
+              latestUpdateDate: item.latestUpdateDate,
+              latestUpdateTime: item.latestUpdateTime
+            });
           }
     
           const existingItem = uniqueMap.get(mapKey);
     
-          if (toPbassUpdateTime(item) > toPbassUpdateTime(existingItem)) {
+          const currentItemTime =
+            toPbassUpdateTime(item);
+    
+          const existingItemTime =
+            toPbassUpdateTime(existingItem);
+    
+          if (currentItemTime > existingItemTime) {
             uniqueMap.set(mapKey, item);
             replacedByLatestCount++;
           }
         }
     
-        const uniqueRows = Array.from(uniqueMap.values());
-        const materialNos = uniqueRows.map(item => item.materialNo);
+        const uniqueRows = Array.from(
+          uniqueMap.values()
+        );
     
-        const materialNoChunks = chunkArray(materialNos, 500);
+        const materialNos = uniqueRows.map(
+          item => item.materialNo
+        );
+    
+        // =========================
+        // Find existing materials
+        // =========================
+    
+        const materialNoChunks = chunkArray(
+          materialNos,
+          500
+        );
+    
         const existingMap = new Map();
     
         for (const chunk of materialNoChunks) {
-          const existingMaterials = await prisma.material.findMany({
-            where: {
-              materialNo: {
-                in: chunk
+          if (!chunk.length) {
+            continue;
+          }
+    
+          const existingMaterials =
+            await prisma.material.findMany({
+              where: {
+                materialNo: {
+                  in: chunk
+                },
+                status: 'use'
               },
-              status: 'use'
-            },
-            select: {
-              id: true,
-              materialNo: true,
-              materialName: true,
-              materialSpec: true,
-              accountCode: true
-            }
-          });
+              select: {
+                id: true,
+                materialNo: true,
+                materialName: true,
+                materialSpec: true,
+                accountCode: true,
+                lineNo: true
+              }
+            });
     
           for (const item of existingMaterials) {
-            existingMap.set(item.materialNo, item);
+            existingMap.set(
+              toText(item.materialNo),
+              item
+            );
           }
         }
+    
+        // =========================
+        // Separate Create / Update / Duplicate
+        // =========================
     
         const createItems = [];
         const updateItems = [];
     
         let duplicateCount = 0;
-        const duplicateSample = [];
-        const updateSample = [];
+    
         const createSample = [];
+        const updateSample = [];
+        const duplicateSample = [];
     
         for (const item of uniqueRows) {
-          const existing = existingMap.get(item.materialNo);
+          const existing = existingMap.get(
+            item.materialNo
+          );
     
+          // ยังไม่มีใน Material Master
           if (!existing) {
             const createItem = {
               materialNo: item.materialNo,
               materialName: item.materialName,
               materialSpec: item.materialSpec,
-              accountCode: item.accountCode
+              accountCode: item.accountCode,
+              lineNo: item.lineNo
             };
     
             createItems.push(createItem);
@@ -505,11 +681,29 @@ module.exports = {
             continue;
           }
     
-          const sameName = (existing.materialName || '') === (item.materialName || '');
-          const sameSpec = (existing.materialSpec || '') === (item.materialSpec || '');
-          const sameAccountCode = (existing.accountCode || '') === (item.accountCode || '');
+          const sameName =
+            toText(existing.materialName) ===
+            item.materialName;
     
-          if (sameName && sameSpec && sameAccountCode) {
+          const sameSpec =
+            toText(existing.materialSpec) ===
+            item.materialSpec;
+    
+          const sameAccountCode =
+            toText(existing.accountCode) ===
+            item.accountCode;
+    
+          const sameLineNo =
+            toText(existing.lineNo).toUpperCase() ===
+            item.lineNo;
+    
+          // ซ้ำครบทุก field ให้ข้าม
+          if (
+            sameName &&
+            sameSpec &&
+            sameAccountCode &&
+            sameLineNo
+          ) {
             duplicateCount++;
     
             if (duplicateSample.length < 30) {
@@ -517,22 +711,42 @@ module.exports = {
                 materialNo: item.materialNo,
                 materialName: item.materialName,
                 materialSpec: item.materialSpec,
-                accountCode: item.accountCode
+                accountCode: item.accountCode,
+                lineNo: item.lineNo
               });
             }
     
             continue;
           }
     
+          // มี Material No เดิม แต่ข้อมูลเปลี่ยน
           const updateItem = {
             id: existing.id,
             materialNo: item.materialNo,
-            oldMaterialName: existing.materialName || '',
-            oldMaterialSpec: existing.materialSpec || '',
-            oldAccountCode: existing.accountCode || '',
-            newMaterialName: item.materialName,
-            newMaterialSpec: item.materialSpec,
-            newAccountCode: item.accountCode || ''
+    
+            oldMaterialName:
+              toText(existing.materialName),
+    
+            oldMaterialSpec:
+              toText(existing.materialSpec),
+    
+            oldAccountCode:
+              toText(existing.accountCode),
+    
+            oldLineNo:
+              toText(existing.lineNo),
+    
+            newMaterialName:
+              item.materialName,
+    
+            newMaterialSpec:
+              item.materialSpec,
+    
+            newAccountCode:
+              item.accountCode,
+    
+            newLineNo:
+              item.lineNo
           };
     
           updateItems.push(updateItem);
@@ -542,23 +756,47 @@ module.exports = {
           }
         }
     
-        const createChunks = chunkArray(createItems, 500);
+        // =========================
+        // Create materials
+        // =========================
+    
+        const createChunks = chunkArray(
+          createItems,
+          500
+        );
+    
         let createdCount = 0;
     
         for (const chunk of createChunks) {
-          if (!chunk.length) continue;
+          if (!chunk.length) {
+            continue;
+          }
     
-          const created = await prisma.material.createMany({
-            data: chunk
-          });
+          const created =
+            await prisma.material.createMany({
+              data: chunk
+            });
     
-          createdCount += created.count || chunk.length;
+          createdCount +=
+            created.count || chunk.length;
         }
     
-        const updateChunks = chunkArray(updateItems, 100);
+        // =========================
+        // Update materials
+        // =========================
+    
+        const updateChunks = chunkArray(
+          updateItems,
+          100
+        );
+    
         let updatedCount = 0;
     
         for (const chunk of updateChunks) {
+          if (!chunk.length) {
+            continue;
+          }
+    
           await Promise.all(
             chunk.map(item =>
               prisma.material.update({
@@ -566,9 +804,17 @@ module.exports = {
                   id: item.id
                 },
                 data: {
-                  materialName: item.newMaterialName,
-                  materialSpec: item.newMaterialSpec,
-                  accountCode: item.newAccountCode
+                  materialName:
+                    item.newMaterialName,
+    
+                  materialSpec:
+                    item.newMaterialSpec,
+    
+                  accountCode:
+                    item.newAccountCode,
+    
+                  lineNo:
+                    item.newLineNo
                 }
               })
             )
@@ -577,34 +823,65 @@ module.exports = {
           updatedCount += chunk.length;
         }
     
+        // =========================
+        // Response
+        // =========================
+    
         return res.send({
-          message: 'Import material master from PBASS success',
+          message:
+            'Import material master from PBASS success',
+    
           requestUrl,
-          year: currentYear,
+          currentYear,
+          targetYear,
     
           totalFromApi: rows.length,
+    
           validRows: normalizedRows.length,
           invalidMaterialNoCount,
     
-          allowedAccountCodes: Array.from(allowedAccountCodes),
-          filteredOutAccountCount,
+          allowedAccountCodes:
+            Array.from(allowedAccountCodes),
     
-          accountSummary: Array.from(accountSummary.entries()).map(([accountCode, count]) => ({
-            accountCode,
-            count
-          })),
+          allowedLineNos:
+            Array.from(allowedLineNos),
+    
+          filteredOutAccountCount,
+          filteredOutLineNoCount,
+    
+          accountSummary:
+            Array.from(
+              accountSummary.entries()
+            ).map(([accountCode, count]) => ({
+              accountCode,
+              count
+            })),
+    
+          lineNoSummary:
+            Array.from(
+              lineNoSummary.entries()
+            ).map(([lineNo, count]) => ({
+              lineNo,
+              count
+            })),
     
           uniqueRows: uniqueRows.length,
     
           createdCount,
           updatedCount,
           duplicateCount,
+    
           duplicateInPayloadCount,
           replacedByLatestCount,
     
-          totalMaterialNoChunks: materialNoChunks.length,
-          totalCreateChunks: createChunks.length,
-          totalUpdateChunks: updateChunks.length,
+          totalMaterialNoChunks:
+            materialNoChunks.length,
+    
+          totalCreateChunks:
+            createChunks.length,
+    
+          totalUpdateChunks:
+            updateChunks.length,
     
           chunkSize: {
             findMany: 500,
@@ -618,10 +895,15 @@ module.exports = {
           duplicateInPayloadSample
         });
       } catch (e) {
-        console.error('getMaterialByPbassFourYearsBack error:', e);
+        console.error(
+          'getMaterialByPbassFourYearsBack error:',
+          e
+        );
     
         return res.status(500).send({
-          message: 'get_material_by_pbass_four_years_back_failed',
+          message:
+            'get_material_by_pbass_four_years_back_failed',
+    
           error: e.message
         });
       }
@@ -677,6 +959,9 @@ module.exports = {
     
         const keyword = String(searchText || '').trim();
     
+        // =============================
+        // Filter
+        // =============================
         const where = {
           status: 'use',
     
@@ -684,10 +969,15 @@ module.exports = {
             ? {
                 timeStamp: {
                   ...(fromDate
-                    ? { gte: new Date(`${fromDate}T00:00:00`) }
+                    ? {
+                        gte: new Date(`${fromDate}T00:00:00`)
+                      }
                     : {}),
+    
                   ...(toDate
-                    ? { lte: new Date(`${toDate}T23:59:59.999`) }
+                    ? {
+                        lte: new Date(`${toDate}T23:59:59.999`)
+                      }
                     : {})
                 }
               }
@@ -696,205 +986,534 @@ module.exports = {
           ...(keyword
             ? {
                 OR: [
-                  { materialNo: { contains: keyword } },
-                  { materialName: { contains: keyword } },
-                  { materialSpec: { contains: keyword } },
-                  { accountCode: { contains: keyword } },
-                ],
+                  {
+                    materialNo: {
+                      contains: keyword
+                    }
+                  },
+                  {
+                    materialName: {
+                      contains: keyword
+                    }
+                  },
+                  {
+                    materialSpec: {
+                      contains: keyword
+                    }
+                  },
+                  {
+                    accountCode: {
+                      contains: keyword
+                    }
+                  },
+                  {
+                    lineNo: {
+                      contains: keyword
+                    }
+                  }
+                ]
               }
-            : {}),
+            : {})
         };
     
         // =============================
-        // 1) ดึง id ตาม filter ก่อน
+        // Sort helpers
+        // =============================
+        const getAccountPriority = (accountCode) => {
+          return String(accountCode || '').trim() === '4520'
+            ? 0
+            : 1;
+        };
+    
+        const getLinePriority = (lineNo) => {
+          const line = String(lineNo || '')
+            .trim()
+            .toUpperCase();
+    
+          if (line === 'LAM') return 0;
+          if (line === 'GEN') return 1;
+    
+          return 2;
+        };
+    
+        const sortMaterialRows = (rows) => {
+          return [...rows].sort((a, b) => {
+            // 1) Account Code 4520 มาก่อน
+            const accountPriorityA =
+              getAccountPriority(a.accountCode);
+    
+            const accountPriorityB =
+              getAccountPriority(b.accountCode);
+    
+            if (accountPriorityA !== accountPriorityB) {
+              return accountPriorityA - accountPriorityB;
+            }
+    
+            // 2) Line No: LAM -> GEN -> ค่าอื่น
+            const linePriorityA =
+              getLinePriority(a.lineNo);
+    
+            const linePriorityB =
+              getLinePriority(b.lineNo);
+    
+            if (linePriorityA !== linePriorityB) {
+              return linePriorityA - linePriorityB;
+            }
+    
+            // 3) Account Code A-Z
+            const accountCompare =
+              String(a.accountCode || '').localeCompare(
+                String(b.accountCode || ''),
+                undefined,
+                {
+                  numeric: true,
+                  sensitivity: 'base'
+                }
+              );
+    
+            if (accountCompare !== 0) {
+              return accountCompare;
+            }
+    
+            // 4) Material No A-Z
+            const materialNoCompare =
+              String(a.materialNo || '').localeCompare(
+                String(b.materialNo || ''),
+                undefined,
+                {
+                  numeric: true,
+                  sensitivity: 'base'
+                }
+              );
+    
+            if (materialNoCompare !== 0) {
+              return materialNoCompare;
+            }
+    
+            // 5) Material Name A-Z
+            const materialNameCompare =
+              String(a.materialName || '').localeCompare(
+                String(b.materialName || ''),
+                undefined,
+                {
+                  numeric: true,
+                  sensitivity: 'base'
+                }
+              );
+    
+            if (materialNameCompare !== 0) {
+              return materialNameCompare;
+            }
+    
+            // 6) Spec A-Z
+            return String(a.materialSpec || '').localeCompare(
+              String(b.materialSpec || ''),
+              undefined,
+              {
+                numeric: true,
+                sensitivity: 'base'
+              }
+            );
+          });
+        };
+    
+        // =============================
+        // 1) ดึง ID ตาม filter ก่อน
         // =============================
         const idRows = await prisma.material.findMany({
           where,
           orderBy: {
-            id: 'desc',
+            id: 'desc'
           },
           select: {
-            id: true,
-          },
+            id: true
+          }
         });
     
-        const allIds = idRows.map(x => x.id);
+        const allIds = idRows.map(row => row.id);
     
+        // =============================
+        // 2) ดึงข้อมูลทีละ 500
+        // =============================
+        const exportRows = [];
+    
+        for (let i = 0; i < allIds.length; i += chunkSize) {
+          const chunkIds = allIds.slice(
+            i,
+            i + chunkSize
+          );
+    
+          const chunkRows =
+            await prisma.material.findMany({
+              where: {
+                id: {
+                  in: chunkIds
+                },
+                ...where
+              },
+              select: {
+                id: true,
+                materialNo: true,
+                materialName: true,
+                materialSpec: true,
+                accountCode: true,
+                lineNo: true,
+                timeStamp: true,
+                status: true
+              }
+            });
+    
+          exportRows.push(...chunkRows);
+        }
+    
+        // =============================
+        // 3) Sort ให้ตรงกับหน้าบ้าน
+        // =============================
+        const sortedRows =
+          sortMaterialRows(exportRows);
+    
+        // =============================
+        // 4) เตรียม Excel
+        // =============================
         const workbook = new ExcelJS.Workbook();
     
-        workbook.creator = 'Material Control System';
+        workbook.creator =
+          'Material Control System';
+    
         workbook.created = new Date();
     
-        const worksheet = workbook.addWorksheet('Material Master', {
-          views: [{ state: 'frozen', ySplit: 1 }],
-        });
+        const worksheet = workbook.addWorksheet(
+          'Material Master',
+          {
+            views: [
+              {
+                state: 'frozen',
+                ySplit: 1
+              }
+            ]
+          }
+        );
     
         worksheet.columns = [
-          { header: 'Index', key: 'index', width: 10 },
-          { header: 'Material No', key: 'materialNo', width: 26 },
-          { header: 'Material Name', key: 'materialName', width: 34 },
-          { header: 'Spec', key: 'materialSpec', width: 26 },
-          { header: 'Account Code', key: 'accountCode', width: 18 },
-          { header: 'Type', key: 'type', width: 16 },
-          { header: 'Created At', key: 'createdAt', width: 24 },
+          {
+            header: 'Index',
+            key: 'index',
+            width: 10
+          },
+          {
+            header: 'Material No',
+            key: 'materialNo',
+            width: 26
+          },
+          {
+            header: 'Material Name',
+            key: 'materialName',
+            width: 34
+          },
+          {
+            header: 'Spec',
+            key: 'materialSpec',
+            width: 26
+          },
+          {
+            header: 'Account Code',
+            key: 'accountCode',
+            width: 18
+          },
+          {
+            header: 'Line No',
+            key: 'lineNo',
+            width: 14
+          },
+          {
+            header: 'Type',
+            key: 'type',
+            width: 16
+          },
+          {
+            header: 'Created At',
+            key: 'createdAt',
+            width: 24
+          }
         ];
     
+        // =============================
+        // Header style
+        // =============================
         const headerRow = worksheet.getRow(1);
+    
         headerRow.height = 24;
     
         headerRow.eachCell((cell) => {
           cell.font = {
             bold: true,
-            color: { argb: 'FFFFFFFF' },
-            size: 11,
+            color: {
+              argb: 'FFFFFFFF'
+            },
+            size: 11
           };
     
           cell.alignment = {
             vertical: 'middle',
             horizontal: 'center',
-            wrapText: true,
+            wrapText: true
           };
     
           cell.fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FF5B8FC9' },
+            fgColor: {
+              argb: 'FF5B8FC9'
+            }
           };
     
           cell.border = {
-            top: { style: 'thin', color: { argb: 'FF4A7DB7' } },
-            left: { style: 'thin', color: { argb: 'FFE5EEF7' } },
-            bottom: { style: 'thin', color: { argb: 'FF4A7DB7' } },
-            right: { style: 'thin', color: { argb: 'FFE5EEF7' } },
+            top: {
+              style: 'thin',
+              color: {
+                argb: 'FF4A7DB7'
+              }
+            },
+            left: {
+              style: 'thin',
+              color: {
+                argb: 'FFE5EEF7'
+              }
+            },
+            bottom: {
+              style: 'thin',
+              color: {
+                argb: 'FF4A7DB7'
+              }
+            },
+            right: {
+              style: 'thin',
+              color: {
+                argb: 'FFE5EEF7'
+              }
+            }
           };
         });
     
+        // =============================
+        // 5) Add rows
+        // =============================
         let excelRowIndex = 2;
         let runningIndex = 1;
     
-        // =============================
-        // 2) Query data ทีละ 500
-        // =============================
-        for (let i = 0; i < allIds.length; i += chunkSize) {
-          const chunkIds = allIds.slice(i, i + chunkSize);
+        for (const row of sortedRows) {
+          const accountCode =
+            String(row.accountCode || '').trim();
     
-          const rows = await prisma.material.findMany({
-            where: {
-              id: {
-                in: chunkIds
-              },
-              ...where
-            },
-            orderBy: {
-              id: 'desc',
-            },
-            select: {
-              id: true,
-              materialNo: true,
-              materialName: true,
-              materialSpec: true,
-              accountCode: true,
-              timeStamp: true,
-              status: true,
-            },
+          const lineNo =
+            String(row.lineNo || '')
+              .trim()
+              .toUpperCase();
+    
+          const type =
+            accountCode === '4520'
+              ? 'Material'
+              : 'Chemical';
+    
+          const excelRow = worksheet.addRow({
+            index: runningIndex,
+            materialNo: row.materialNo || '',
+            materialName: row.materialName || '',
+            materialSpec: row.materialSpec || '',
+            accountCode,
+            lineNo,
+            type,
+    
+            createdAt: row.timeStamp
+              ? new Date(
+                  row.timeStamp
+                ).toLocaleString('th-TH', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              : ''
           });
     
-          for (const row of rows) {
-            const accountCode = row.accountCode || '';
-            const type = accountCode === '4520' ? 'Material' : 'Chemical';
+          const isBlueRow =
+            excelRowIndex % 2 === 0;
     
-            const excelRow = worksheet.addRow({
-              index: runningIndex,
-              materialNo: row.materialNo || '',
-              materialName: row.materialName || '',
-              materialSpec: row.materialSpec || '',
-              accountCode,
-              type,
-              createdAt: row.timeStamp
-                ? new Date(row.timeStamp).toLocaleString('th-TH', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : '',
-            });
+          const bgColor = isBlueRow
+            ? 'FFDBE7F3'
+            : 'FFFFFFFF';
     
-            const isBlueRow = excelRowIndex % 2 === 0;
-            const bgColor = isBlueRow ? 'FFDBE7F3' : 'FFFFFFFF';
+          excelRow.height = 24;
     
-            excelRow.height = 24;
-    
-            excelRow.eachCell((cell, colNumber) => {
+          excelRow.eachCell(
+            (cell, colNumber) => {
               cell.fill = {
                 type: 'pattern',
                 pattern: 'solid',
-                fgColor: { argb: bgColor },
+                fgColor: {
+                  argb: bgColor
+                }
               };
     
               cell.border = {
-                top: { style: 'thin', color: { argb: 'FFB8C9DC' } },
-                left: { style: 'thin', color: { argb: 'FFB8C9DC' } },
-                bottom: { style: 'thin', color: { argb: 'FFB8C9DC' } },
-                right: { style: 'thin', color: { argb: 'FFB8C9DC' } },
+                top: {
+                  style: 'thin',
+                  color: {
+                    argb: 'FFB8C9DC'
+                  }
+                },
+                left: {
+                  style: 'thin',
+                  color: {
+                    argb: 'FFB8C9DC'
+                  }
+                },
+                bottom: {
+                  style: 'thin',
+                  color: {
+                    argb: 'FFB8C9DC'
+                  }
+                },
+                right: {
+                  style: 'thin',
+                  color: {
+                    argb: 'FFB8C9DC'
+                  }
+                }
               };
     
               cell.alignment = {
                 vertical: 'middle',
-                horizontal: colNumber === 1 ? 'center' : 'left',
-                wrapText: true,
+    
+                horizontal:
+                  colNumber === 1 ||
+                  colNumber === 6 ||
+                  colNumber === 7
+                    ? 'center'
+                    : 'left',
+    
+                wrapText: true
               };
     
               cell.font = {
                 size: 12,
-                bold: colNumber === 2 || colNumber === 5 || colNumber === 6,
+    
+                bold:
+                  colNumber === 2 ||
+                  colNumber === 5 ||
+                  colNumber === 6 ||
+                  colNumber === 7,
+    
                 color: {
                   argb:
-                    colNumber === 2 || colNumber === 5 || colNumber === 6
+                    colNumber === 2 ||
+                    colNumber === 5 ||
+                    colNumber === 6 ||
+                    colNumber === 7
                       ? 'FF0F172A'
-                      : 'FF334155',
-                },
+                      : 'FF334155'
+                }
               };
     
-              // Type column color
+              // =============================
+              // Line No column color
+              // Column 6
+              // =============================
               if (colNumber === 6) {
+                if (lineNo === 'LAM') {
+                  cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: {
+                      argb: 'FFECFEFF'
+                    }
+                  };
+    
+                  cell.font = {
+                    size: 12,
+                    bold: true,
+                    color: {
+                      argb: 'FF0E7490'
+                    }
+                  };
+                } else if (lineNo === 'GEN') {
+                  cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: {
+                      argb: 'FFF0FDF4'
+                    }
+                  };
+    
+                  cell.font = {
+                    size: 12,
+                    bold: true,
+                    color: {
+                      argb: 'FF15803D'
+                    }
+                  };
+                }
+              }
+    
+              // =============================
+              // Type column color
+              // Column 7
+              // =============================
+              if (colNumber === 7) {
                 if (type === 'Material') {
                   cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
-                    fgColor: { argb: 'FFFFF7ED' },
+                    fgColor: {
+                      argb: 'FFFFF7ED'
+                    }
                   };
+    
                   cell.font = {
                     size: 12,
                     bold: true,
-                    color: { argb: 'FFB45309' },
+                    color: {
+                      argb: 'FFB45309'
+                    }
                   };
                 } else {
                   cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
-                    fgColor: { argb: 'FFEFF6FF' },
+                    fgColor: {
+                      argb: 'FFEFF6FF'
+                    }
                   };
+    
                   cell.font = {
                     size: 12,
                     bold: true,
-                    color: { argb: 'FF1D4ED8' },
+                    color: {
+                      argb: 'FF1D4ED8'
+                    }
                   };
                 }
               }
-            });
+            }
+          );
     
-            excelRowIndex++;
-            runningIndex++;
-          }
+          excelRowIndex++;
+          runningIndex++;
         }
     
+        // =============================
+        // Auto filter
+        // A ถึง H = 8 columns
+        // =============================
         worksheet.autoFilter = {
           from: 'A1',
-          to: 'G1',
+          to: 'H1'
         };
     
+        // =============================
+        // Response
+        // =============================
         res.setHeader(
           'Content-Type',
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -906,9 +1525,18 @@ module.exports = {
         );
     
         await workbook.xlsx.write(res);
+    
         return res.end();
       } catch (e) {
-        return res.status(500).send({ error: e.message });
+        console.error(
+          'Material exportExcel error:',
+          e
+        );
+    
+        return res.status(500).send({
+          message: 'export_material_excel_failed',
+          error: e.message
+        });
       }
     },
 
