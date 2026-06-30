@@ -333,6 +333,7 @@ model RecordInventory {
   totalPrice Float
   lineNo String
   timeStmp DateTime 
+  status String @default("use")
 }
 
 

@@ -18,7 +18,7 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   'http://10.121.50.124:4200', // 👈 ใส่ IP เครื่อง Server notebook
+   'http://10.121.50.33:4200', // 👈 ใส่ IP เครื่อง Server notebook
   // 'http://10.121.1.85'// เครื่อง server จริง
 
 ];
@@ -212,7 +212,9 @@ app.post('/api/transactionAll/exportExcel',(req, res) => transactionAllControlle
 //Graph
 
 app.post('/api/graph/saveInventory',(req, res) => graphController.saveInventory(req,res))
-
+app.get('/api/graph/updateGraph',(req, res) => graphController.updateGraph(req,res))
+app.get('/api/graph/listInventory',(req, res) => graphController.listInventory(req,res))
+app.get('/api/graph/listTransaction',(req,res) => graphController.listTransaction(req,res))
 
 
 /* =====================================================
@@ -257,9 +259,9 @@ async function checkDailyInventorySchedule() {
   const dateKey =
     `${bangkok.year}-${bangkok.month}-${bangkok.day}`;
 
-  const targetHour = 15;
-  const startMinute = 1;
-  const endMinute = 4;
+  const targetHour = 16;
+  const startMinute = 40;
+  const endMinute = 43;
 
   const isInRunWindow =
     bangkok.hour === targetHour &&

@@ -720,6 +720,11 @@ module.exports = {
           width: 28
         },
         {
+          header: 'Line No',
+          key: 'lineNo',
+          width: 14
+        },
+        {
           header: 'Not Control',
           key: 'notControlText',
           width: 18
@@ -893,7 +898,8 @@ module.exports = {
             },
             select: {
               materialNo: true,
-              accountCode: true
+              accountCode: true,
+              lineNo: true
             }
           });
   
@@ -1078,6 +1084,13 @@ module.exports = {
   
             accountCode:
               materialMaster?.accountCode || '',
+
+            
+            lineNo: String(
+                materialMaster?.lineNo || ''
+              )
+                .trim()
+                .toUpperCase(),
   
             coil: Number(row.Incoming?.coil || 0),
             qtyKgsPcs,
@@ -1147,7 +1160,8 @@ module.exports = {
           area: item.area,
           remark: item.remark,
           stockNote: item.stockNote,
-  
+          lineNo: item.lineNo,
+
           notControlText:
             item.notControl === 'yes'
               ? 'Not Control'
@@ -1207,7 +1221,7 @@ module.exports = {
           };
   
           const centerColumns = [
-            1, 7, 10, 16, 18, 19, 20, 21, 22, 23
+            1, 7, 10, 16, 18, 19, 20, 21, 22, 23, 24
           ];
   
           const rightColumns = [
@@ -1242,10 +1256,118 @@ module.exports = {
             }
           };
         });
+
+
+        // =============================
+        // Line No style
+        // =============================
+
+        const lineNoCell = excelRow.getCell(16);
+        const lineNoText = String(item.lineNo || '')
+          .trim()
+          .toUpperCase();
+
+        lineNoCell.alignment = {
+          vertical: 'middle',
+          horizontal: 'center',
+          wrapText: true
+        };
+
+        lineNoCell.font = {
+          size: 12,
+          bold: true,
+          color: {
+            argb: 'FF334155'
+          }
+        };
+
+        lineNoCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: {
+            argb: 'FFF8FAFC'
+          }
+        };
+
+        if (lineNoText === 'LAM') {
+          lineNoCell.font = {
+            size: 12,
+            bold: true,
+            color: {
+              argb: 'FF15803D'
+            }
+          };
+
+          lineNoCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: {
+              argb: 'FFECFDF5'
+            }
+          };
+
+          lineNoCell.border = {
+            top: {
+              style: 'thin',
+              color: { argb: 'FF86C99A' }
+            },
+            left: {
+              style: 'thin',
+              color: { argb: 'FF86C99A' }
+            },
+            bottom: {
+              style: 'thin',
+              color: { argb: 'FF86C99A' }
+            },
+            right: {
+              style: 'thin',
+              color: { argb: 'FF86C99A' }
+            }
+          };
+        }
+
+        if (lineNoText === 'GEN') {
+          lineNoCell.font = {
+            size: 12,
+            bold: true,
+            color: {
+              argb: 'FF0369A1'
+            }
+          };
+
+          lineNoCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: {
+              argb: 'FFF0F9FF'
+            }
+          };
+
+          lineNoCell.border = {
+            top: {
+              style: 'thin',
+              color: { argb: 'FF7DD3FC' }
+            },
+            left: {
+              style: 'thin',
+              color: { argb: 'FF7DD3FC' }
+            },
+            bottom: {
+              style: 'thin',
+              color: { argb: 'FF7DD3FC' }
+            },
+            right: {
+              style: 'thin',
+              color: { argb: 'FF7DD3FC' }
+            }
+          };
+        }
+
+
   
         // Judgement เป็นสีแดง
         if (item.judgement === 'Reinspection') {
-          const judgementCell = excelRow.getCell(23);
+          const judgementCell = excelRow.getCell(24);
   
           judgementCell.font = {
             size: 12,
@@ -1282,7 +1404,7 @@ module.exports = {
       // A ถึง W = 23 Columns
       worksheet.autoFilter = {
         from: 'A1',
-        to: 'W1'
+        to: 'X1'
       };
   
       res.setHeader(
