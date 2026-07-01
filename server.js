@@ -40,7 +40,7 @@ const transactionJobController = require('./controllers/TransactionJobReport');
 const transactionStoreController = require('./controllers/TransactionStoreReport');
 const transactionAllController = require('./controllers/TransactionAllReport');
 const graphController = require('./controllers/graphController');
-
+const incomingController = require('./controllers/IncomingController');
 
 
 
@@ -218,6 +218,14 @@ app.get('/api/graph/listTransaction',(req,res) => graphController.listTransactio
 app.post('/api/graph/createTargetGraph',(req,res) => graphController.createTargetGraph(req,res))
 app.post('/api/graph/updateTargetGraph',(req,res) => graphController.updateTargetGraph(req,res))
 app.get('/api/graph/listTargetGraph', (req, res) => graphController.listTargetGraph(req,res))
+
+
+
+//Incoming
+app.get('/api/incoming/list',(req, res) => incomingController.list(req,res))
+app.post('/api/incoming/updateReportField',(req, res) => incomingController.updateReportField(req,res))
+
+
 
 
 /* =====================================================

@@ -115,41 +115,66 @@ module.exports = {
       },
 
 
-      updateIncoming: async (req,res) =>{
-        try{
-          const {
-            userId, 
-            jobNo,
-            yearMonth, recivedDate, inspector,
-            unloadBy, invoiceOne, taxLnvNo, materialNo,
-            unitPrice, qtyOfPalletPack, coil, qtyKgsPcs,
-            unit, kgsCoil, odCoil, remark, millSheet, itemName,
-            itemSpec, lotNo, packing, rosh, result, supplier, 
-            amount,
-            //store
-            storageArea, 
-            //transaction Store
-            stockNote
-          } = req.body;
 
-
-          const checkGroup = await prisma.incoming.findFirst({
+      updateReportField: async (req, res) => {
+        try {
+          const { id, field, value } = req.body;
+      
+          if (!id || !field) {
+            return res.status(400).send({
+              message: 'missing_required_fields'
+            });
+          }
+      
+          const allowFields = [
+            'invoiceOne',
+            'lotNo',
+            'remark'
+          ];
+      
+          if (!allowFields.includes(field)) {
+            return res.status(400).send({
+              message: 'field_not_allowed',
+              allowFields
+            });
+          }
+      
+          const incoming = await prisma.incoming.findFirst({
             where: {
-              name: name,
-              status: 'use',
-            },
+              id: Number(id),
+              status: 'use'
+            }
           });
-
-          if (checkGroup) {
-            return res.status(400).send({ message: 'Group_name_already' });
-          }  
-
-
-          
-        }catch(e){
-          return res.status(500).send({ error: e.message });
+      
+          if (!incoming) {
+            return res.status(404).send({
+              message: 'incoming_not_found'
+            });
+          }
+      
+          const updated = await prisma.incoming.update({
+            where: {
+              id: Number(id)
+            },
+            data: {
+              [field]: value == null ? '' : String(value)
+            }
+          });
+      
+          return res.send({
+            message: 'update_incoming_field_success',
+            data: updated
+          });
+      
+        } catch (e) {
+          console.error('updateReportField error:', e);
+      
+          return res.status(500).send({
+            message: 'update_incoming_field_failed',
+            error: e.message
+          });
         }
-      }
+      },
 
 
     
