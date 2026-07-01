@@ -338,6 +338,15 @@ model RecordInventory {
 
 
 
+model TargetGraph {
+  id Int @id() @default(autoincrement())
+  graph String
+  target Float
+  status String @default("use")
+}
+
+
+
 
 
 

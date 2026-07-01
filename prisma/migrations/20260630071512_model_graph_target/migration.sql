@@ -1,0 +1,25 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateTable
+CREATE TABLE [dbo].[TargetGraph] (
+    [id] INT NOT NULL IDENTITY(1,1),
+    [graph] NVARCHAR(1000) NOT NULL,
+    [target] FLOAT(53) NOT NULL,
+    [status] NVARCHAR(1000) NOT NULL CONSTRAINT [TargetGraph_status_df] DEFAULT 'use',
+    CONSTRAINT [TargetGraph_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

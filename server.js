@@ -215,6 +215,9 @@ app.post('/api/graph/saveInventory',(req, res) => graphController.saveInventory(
 app.get('/api/graph/updateGraph',(req, res) => graphController.updateGraph(req,res))
 app.get('/api/graph/listInventory',(req, res) => graphController.listInventory(req,res))
 app.get('/api/graph/listTransaction',(req,res) => graphController.listTransaction(req,res))
+app.post('/api/graph/createTargetGraph',(req,res) => graphController.createTargetGraph(req,res))
+app.post('/api/graph/updateTargetGraph',(req,res) => graphController.updateTargetGraph(req,res))
+app.get('/api/graph/listTargetGraph', (req, res) => graphController.listTargetGraph(req,res))
 
 
 /* =====================================================
@@ -260,8 +263,8 @@ async function checkDailyInventorySchedule() {
     `${bangkok.year}-${bangkok.month}-${bangkok.day}`;
 
   const targetHour = 16;
-  const startMinute = 40;
-  const endMinute = 43;
+  const startMinute = 35;
+  const endMinute = 38;
 
   const isInRunWindow =
     bangkok.hour === targetHour &&

@@ -1517,4 +1517,124 @@ module.exports = {
   },
 
 
+
+  createTargetGraph: async (req,res) => {
+    try{
+      const { graph, target } = req.body;
+
+      if ( !graph  || target == null) {
+        return res.status(400).send({ message: 'missing_required_fields' });
+      }
+
+      const checkTargetGraph = await prisma.targetGraph.findFirst({
+          where: {
+            graph: graph ,
+            target: parseFloat(target)  ,
+            status: 'use',
+          },
+        });
+
+        if (checkTargetGraph) {
+          return res.status(400).send({ message: 'targetGraph_already' });
+        }  
+
+
+        const targetGraph = await prisma.targetGraph.create({
+          data: {
+            graph: graph,
+            target: parseFloat(target)
+          },
+        });
+
+      return res.send({
+          message: 'create_targetGraph_success',
+          data: targetGraph,
+      });
+
+    }catch(e){
+      return res.status(500).send({ error: e.message });
+    }
+  },
+
+
+  updateTargetGraph: async (req, res) => {
+    try {
+      const { graph, target } = req.body;
+  
+      if (!graph || target == null) {
+        return res.status(400).send({
+          message: 'missing_required_fields'
+        });
+      }
+  
+      const targetValue = parseFloat(target);
+  
+      if (Number.isNaN(targetValue)) {
+        return res.status(400).send({
+          message: 'invalid_target'
+        });
+      }
+  
+      const oldTargetGraph = await prisma.targetGraph.findFirst({
+        where: {
+          graph: String(graph),
+          status: 'use'
+        },
+        orderBy: {
+          id: 'desc'
+        }
+      });
+  
+      let targetGraph;
+  
+      if (oldTargetGraph) {
+        targetGraph = await prisma.targetGraph.update({
+          where: {
+            id: oldTargetGraph.id
+          },
+          data: {
+            target: targetValue
+          }
+        });
+      } else {
+        targetGraph = await prisma.targetGraph.create({
+          data: {
+            graph: String(graph),
+            target: targetValue,
+            status: 'use'
+          }
+        });
+      }
+  
+      return res.send({
+        message: 'update_targetGraph_success',
+        data: targetGraph
+      });
+  
+    } catch (e) {
+      console.error('updateTargetGraph error:', e);
+  
+      return res.status(500).send({
+        message: 'update_targetGraph_failed',
+        error: e.message
+      });
+    }
+  },
+
+  listTargetGraph: async (req, res) => {
+    try{
+      const rows = await prisma.targetGraph.findMany({
+        where: {
+          status: 'use'
+        }
+    })
+    return res.send({ results: rows })
+
+    }catch(e){
+      return res.status(500).send({ error: e.message });
+    }
+  }
+
+
+
 };
