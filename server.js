@@ -270,9 +270,9 @@ async function checkDailyInventorySchedule() {
   const dateKey =
     `${bangkok.year}-${bangkok.month}-${bangkok.day}`;
 
-  const targetHour = 16;
-  const startMinute = 35;
-  const endMinute = 38;
+  const targetHour = 7;
+  const startMinute = 0;
+  const endMinute = 9;
 
   const isInRunWindow =
     bangkok.hour === targetHour &&
