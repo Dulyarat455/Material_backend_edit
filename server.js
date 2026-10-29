@@ -18,7 +18,7 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   'http://10.121.50.33:4200', // 👈 ใส่ IP เครื่อง Server notebook
+   'http://10.121.50.202:4200', // 👈 ใส่ IP เครื่อง Server notebook
   // 'http://10.121.1.85'// เครื่อง server จริง
 
 ];
@@ -218,7 +218,7 @@ app.get('/api/graph/listTransaction',(req,res) => graphController.listTransactio
 app.post('/api/graph/createTargetGraph',(req,res) => graphController.createTargetGraph(req,res))
 app.post('/api/graph/updateTargetGraph',(req,res) => graphController.updateTargetGraph(req,res))
 app.get('/api/graph/listTargetGraph', (req, res) => graphController.listTargetGraph(req,res))
-
+app.post('/api/graph/exportExcel', (req, res) => graphController.exportExcel(req, res))
 
 
 //Incoming
