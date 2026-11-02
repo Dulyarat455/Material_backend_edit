@@ -18,7 +18,7 @@ dotenv.config();
 
 const allowedOrigins = [
    // 'http://localhost:4200',
-   'http://10.121.50.202:4200', // 👈 ใส่ IP เครื่อง Server notebook
+   'http://10.121.51.188:4200', // 👈 ใส่ IP เครื่อง Server notebook
   // 'http://10.121.1.85'// เครื่อง server จริง
 
 ];
